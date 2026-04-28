@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rtk-claude-safe"
+version = "0.1.0"
+description = "Python wrapper for rtk (Rust Token Killer) that installs it cross-platform and configures Claude Code with a scoped, safer set of PreToolUse hooks."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Charles" }]
+keywords = ["rtk", "claude", "claude-code", "hooks", "tokens"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+]
+
+[project.scripts]
+rtk-claude-safe = "rtk_claude_safe.cli:main"
+
+[project.urls]
+"Source" = "https://github.com/rtk-ai/rtk"
+
+[tool.setuptools.packages.find]
+include = ["rtk_claude_safe*"]
