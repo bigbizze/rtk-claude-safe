@@ -1,11 +1,11 @@
-# rtk-claude-safe
+j# rtk-claude-safe
 
 A Python wrapper around [rtk (Rust Token Killer)](https://github.com/rtk-ai/rtk) that installs the
 right binary for your platform and applies a curated, **safer** Claude Code hook configuration in
 one command.
 
 ```bash
-pipx install git+https://github.com/<you>/rtk-claude-safe.git
+pipx install git+https://github.com/bigbizze/rtk-claude-safe.git
 rtk-claude-safe init
 ```
 
