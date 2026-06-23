@@ -60,6 +60,18 @@ def test_cli_patches_codex_only(monkeypatch, tmp_path) -> None:
     assert [name for name, _value in calls] == ["ensure", "codex"]
 
 
+def test_cli_skips_codex_on_native_windows(monkeypatch, tmp_path, capsys) -> None:
+    _claude_settings, codex_hooks = _patch_cli_paths(monkeypatch, tmp_path)
+    calls = _patch_cli_actions(monkeypatch)
+    codex_hooks.parent.mkdir()
+    monkeypatch.setattr(cli.platform, "system", lambda: "Windows")
+
+    assert cli.main(["init"]) == 0
+
+    assert calls == []
+    assert "native Windows Codex hooks are not supported" in capsys.readouterr().err
+
+
 def test_cli_patches_both(monkeypatch, tmp_path) -> None:
     claude_settings, codex_hooks = _patch_cli_paths(monkeypatch, tmp_path)
     calls = _patch_cli_actions(monkeypatch)
@@ -93,9 +105,16 @@ def test_cli_explicit_settings_targets_claude(monkeypatch, tmp_path) -> None:
 
 def test_codex_hook_is_hidden_from_help() -> None:
     assert "codex-hook" not in cli.build_parser().format_help()
+    assert "claude-hook" not in cli.build_parser().format_help()
 
 
 def test_hidden_codex_hook_subcommand_dispatches(monkeypatch) -> None:
     monkeypatch.setattr(cli, "codex_hook_main", lambda: 0)
 
     assert cli.main(["codex-hook"]) == 0
+
+
+def test_hidden_claude_hook_subcommand_dispatches(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "claude_hook_main", lambda: 0)
+
+    assert cli.main(["claude-hook"]) == 0

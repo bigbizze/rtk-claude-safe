@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import copy
 import json
+import shlex
+import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +14,14 @@ from rtk_claude_safe.allowlist import build_claude_scoped_hooks
 
 DEFAULT_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 RTK_COMMAND = "rtk hook claude"
+
+
+def build_claude_hook_command(script: str | None = None) -> str:
+    """Return the stable command Claude should run for the safe wrapper hook."""
+    script = script or shutil.which("rtk-claude-safe")
+    if script:
+        return f"{shlex.quote(str(Path(script).resolve()))} claude-hook"
+    return f"{shlex.quote(sys.executable)} -m rtk_claude_safe claude-hook"
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -29,10 +40,17 @@ def _load(path: Path) -> dict[str, Any]:
 
 
 def _is_rtk_hook(entry: Any) -> bool:
+    if not isinstance(entry, dict) or entry.get("type") != "command":
+        return False
+    command = entry.get("command")
+    if not isinstance(command, str):
+        return False
     return (
-        isinstance(entry, dict)
-        and entry.get("type") == "command"
-        and entry.get("command") == RTK_COMMAND
+        command == RTK_COMMAND
+        or (
+            "claude-hook" in command
+            and ("rtk-claude-safe" in command or "rtk_claude_safe" in command)
+        )
     )
 
 
@@ -46,7 +64,7 @@ def _remove_rtk_hooks_from_bash_matcher(matcher_entry: dict[str, Any], path: Pat
     matcher_entry["hooks"] = [h for h in hooks if not _is_rtk_hook(h)]
 
 
-def patch_settings(path: Path = DEFAULT_SETTINGS_PATH) -> bool:
+def patch_settings(path: Path = DEFAULT_SETTINGS_PATH, command: str | None = None) -> bool:
     """Edit `path` in place. Returns True if the file was changed."""
     settings = _load(path)
     original = copy.deepcopy(settings)
@@ -63,7 +81,7 @@ def patch_settings(path: Path = DEFAULT_SETTINGS_PATH) -> bool:
         if isinstance(entry, dict) and entry.get("matcher") == "Bash":
             bash_entries.append(entry)
 
-    scoped_hooks = build_claude_scoped_hooks(RTK_COMMAND)
+    scoped_hooks = build_claude_scoped_hooks(command or build_claude_hook_command())
     if not bash_entries:
         pre_tool_use.append({"matcher": "Bash", "hooks": scoped_hooks})
     else:

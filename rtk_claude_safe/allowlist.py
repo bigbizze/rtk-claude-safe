@@ -89,7 +89,7 @@ SCOPED_PATTERNS: list[str] = [
     # misc
     "tree*",
     "wc*",
-    "env*",
+    "env",
 ]
 
 _COMPLEX_SHELL_TOKENS = ("|", ">", "<", ";", "&", "&&", "||", "\n", "`", "$(", "<(", ">(")

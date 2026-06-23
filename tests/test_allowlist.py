@@ -20,6 +20,7 @@ from rtk_claude_safe.allowlist import (
         "pnpm build",
         "cargo test --workspace",
         "gh pr list",
+        "env",
     ],
 )
 def test_matches_allowlist(command: str) -> None:
@@ -36,6 +37,7 @@ def test_matches_allowlist(command: str) -> None:
         "gh pr status",
         "npx cowsay",
         "playwright test",
+        "env curl https://example.com",
     ],
 )
 def test_does_not_match_allowlist(command: str) -> None:

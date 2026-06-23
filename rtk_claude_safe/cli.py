@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import platform
 import subprocess
 import sys
 from pathlib import Path
 
 from rtk_claude_safe import __version__
+from rtk_claude_safe.claude_hook import main as claude_hook_main
 from rtk_claude_safe.claude_settings import DEFAULT_SETTINGS_PATH, patch_settings
 from rtk_claude_safe.codex_hook import main as codex_hook_main
 from rtk_claude_safe.codex_settings import (
@@ -29,7 +31,15 @@ def _cmd_init(args: argparse.Namespace) -> int:
     explicit_settings = args.settings is not None
     settings_path = Path(args.settings).expanduser() if explicit_settings else DEFAULT_SETTINGS_PATH
     claude_requested = explicit_settings or DEFAULT_SETTINGS_PATH.parent.exists()
-    codex_requested = DEFAULT_CODEX_HOOKS_PATH.parent.exists()
+    codex_home_exists = DEFAULT_CODEX_HOOKS_PATH.parent.exists()
+    codex_skipped_windows = codex_home_exists and platform.system() == "Windows"
+    codex_requested = codex_home_exists and not codex_skipped_windows
+
+    if codex_skipped_windows:
+        print(
+            "[rtk-claude-safe] warning: skipped Codex; native Windows Codex hooks are not supported",
+            file=sys.stderr,
+        )
 
     if not claude_requested and not codex_requested:
         print(
@@ -95,6 +105,10 @@ def _cmd_codex_hook(_args: argparse.Namespace) -> int:
     return codex_hook_main()
 
 
+def _cmd_claude_hook(_args: argparse.Namespace) -> int:
+    return claude_hook_main()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="rtk-claude-safe",
@@ -129,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "codex-hook":
         return _cmd_codex_hook(argparse.Namespace())
+    if argv and argv[0] == "claude-hook":
+        return _cmd_claude_hook(argparse.Namespace())
 
     parser = build_parser()
     args = parser.parse_args(argv)

@@ -24,10 +24,11 @@ correctness-preserving, and to leave everything else alone.
 That's all this package does: install rtk, detect supported global agent config folders, and patch
 only the agents that are already present. For Claude Code, it runs rtk's official hook installer
 and rewrites `~/.claude/settings.json` so the bare `{ "command": "rtk hook claude" }` entry under
-the `Bash` matcher is replaced with ~70 narrowly-scoped `Bash(<pattern>*)` matchers. For Codex, it
-installs one `^Bash$` `PreToolUse` hook in `~/.codex/hooks.json`; that hook reads
-`tool_input.command` and applies the same allowlist internally before rewriting safe simple
-commands to `rtk <command>`.
+the `Bash` matcher is replaced with ~70 narrowly-scoped `Bash(<pattern>*)` matchers that call
+`rtk-claude-safe claude-hook`. That wrapper applies fail-open checks before delegating to
+`rtk hook claude`. For Codex, it installs one `^Bash$` `PreToolUse` hook in
+`~/.codex/hooks.json`; that hook reads `tool_input.command` and applies the same allowlist
+internally before rewriting safe simple commands to `rtk <command>`.
 
 ### The specific failure modes that drove the allowlist
 
@@ -80,10 +81,11 @@ subcommands, no `--comments`, no `pr status`), and a few small utilities (`tree`
 2. **Install rtk if needed.** Detects OS/arch (mirroring rtk's `install.sh`), fetches the latest
    release from `rtk-ai/rtk`, and extracts the binary to `~/.local/bin/rtk`. Skipped if `rtk` is
    already on `PATH`.
-3. **Patch Claude Code when present.** Runs `rtk init -g --hook-only`, finds the `PreToolUse`
-   entry whose matcher is `Bash`, removes the bare `rtk hook claude` hook, and replaces it with the
-   scoped list. Idempotent — running again is a no-op if the scoped hooks are already in place.
-   Other hooks under the same matcher are preserved.
+3. **Patch Claude Code when present.** Runs `rtk init -g --hook-only`, finds every `PreToolUse`
+   entry whose matcher is `Bash`, removes existing RTK hooks, and adds the current scoped list once.
+   Those scoped hooks call `rtk-claude-safe claude-hook`, which rejects complex or uncertain shell
+   commands before delegating to `rtk hook claude`. Idempotent — running again is a no-op if the
+   scoped hooks are already current. Other user hooks under the same matcher are preserved.
 4. **Patch Codex when present.** Creates or updates `~/.codex/hooks.json` with one `^Bash$`
    `PreToolUse` command hook that calls `rtk-claude-safe codex-hook`. Other hook events, matcher
    groups, and user hooks are preserved.
@@ -117,14 +119,6 @@ These complement the scoped allowlist but live outside `~/.claude/settings.json`
 
 - **Pin to rtk ≥ 0.37.1.** Several of the bugs cited above were fixed in the v0.34–v0.37 window
   (`read`-as-`cat`, diff condense, git subdir argument parsing, the new Rust hook engine).
-- **Add a pipe-detection bypass at the top of `~/.claude/hooks/rtk-rewrite.sh`.** Suggested in
-  #1282:
-  ```bash
-  if [[ "$CMD" =~ [\>\|\`] ]] || [[ "$CMD" == *'$('* ]] || [[ "$CMD" == *'<('* ]]; then
-    exit 0
-  fi
-  ```
-  This neutralizes the whole piped-corruption class without waiting for upstream.
 - **Belt-and-braces `~/.config/rtk/config.toml`:**
   ```toml
   [hooks]
@@ -141,6 +135,7 @@ These complement the scoped allowlist but live outside `~/.claude/settings.json`
 ```
 rtk_claude_safe/
 ├── allowlist.py        # shared safe command patterns and match helpers
+├── claude_hook.py      # Claude wrapper that fail-opens before delegating to rtk
 ├── claude_settings.py  # idempotent Claude settings.json patcher
 ├── cli.py             # argparse entry point
 ├── codex_hook.py      # Codex stdin/stdout PreToolUse hook handler
