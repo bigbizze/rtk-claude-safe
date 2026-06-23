@@ -11,20 +11,18 @@ rtk-claude-safe init
 
 ## Why this exists
 
-`rtk init -g --hook-only` installs a `PreToolUse` hook with `matcher: "Bash"` and no `if` clause —
-i.e. **rtk rewrites every single Bash command Claude runs**. That sounds fine until you actually
-read the rtk issue tracker, and it isn't. There are several distinct classes of "the agent
-confidently acts on wrong output" bugs that are live in current rtk releases and won't be fully
-fixed for a while. The default catch-all hook puts every one of them on the critical path.
+RTK's broad built-in hook integration can put every Bash command on a rewrite path. That sounds
+fine until you actually read the RTK issue tracker, and it is not. There are several distinct
+classes of "the agent confidently acts on wrong output" bugs that are live in current RTK releases.
+A catch-all hook puts every one of them on the critical path.
 
 The fix isn't to stop using rtk — its filtering really does save 60-90% of tokens on noisy
 commands. The fix is to scope the hook to the commands where the filter is well-trodden and
 correctness-preserving, and to leave everything else alone.
 
-That's all this package does: install rtk, detect supported global agent config folders, and patch
-only the agents that are already present. For Claude Code, it runs rtk's official hook installer
-and rewrites `~/.claude/settings.json` so the bare `{ "command": "rtk hook claude" }` entry under
-the `Bash` matcher is replaced with scoped `Bash(<pattern>*)` candidate matchers that call
+That's all this package does: install or validate a supported stable RTK binary, detect supported
+global agent config folders, and patch only the agents that are already present. For Claude Code,
+it writes scoped `Bash(<pattern>*)` candidate matchers in `~/.claude/settings.json` that call
 `rtk-claude-safe claude-hook`. For Codex, it installs one `^Bash$` `PreToolUse` hook in
 `~/.codex/hooks.json`. Both hook executables parse `tool_input.command`, apply the same fail-open
 safety classifier, and emit direct `updatedInput.command` rewrites only for known safe command
@@ -74,18 +72,24 @@ comment-fetching modes, read-only pip inventory commands, and a few small utilit
 1. **Detect installed agents.** If `~/.claude/` exists, Claude Code is patched. If `~/.codex/`
    exists, Codex is patched. If neither exists, the command exits without installing rtk or creating
    agent config directories.
-2. **Install rtk if needed.** Detects OS/arch (mirroring rtk's `install.sh`), fetches the latest
-   release from `rtk-ai/rtk`, and extracts the binary to `~/.local/bin/rtk`. Skipped if `rtk` is
-   already on `PATH`.
-3. **Patch Claude Code when present.** Runs `rtk init -g --hook-only`, finds every `PreToolUse`
-   entry whose matcher is `Bash`, removes existing RTK hooks, and adds the current scoped candidate
-   list once. Those scoped hooks call `rtk-claude-safe claude-hook`, which rejects complex or
-   uncertain shell commands and emits direct `updatedInput.command` rewrites. Idempotent — running
-   again is a no-op if the scoped hooks are already current. Other user hooks under the same matcher
-   are preserved.
+2. **Validate or install RTK.** If `rtk` already exists on `PATH`, it must be a supported stable
+   version. This release is updated for RTK `v0.42.4` and requires `rtk >= 0.42.4`; older,
+   prerelease, or unparseable binaries make `init` fail before any hook config is modified. If RTK
+   is missing, the installer downloads the latest stable GitHub release, verifies release metadata,
+   API digests, checksums, and archive contents, then atomically installs `rtk` to
+   `~/.local/bin/rtk`. The downloaded binary must be reachable on `PATH` before config is patched.
+3. **Patch Claude Code when present.** Finds or creates the global `PreToolUse` matcher groups,
+   removes older RTK-managed hooks, and adds the current scoped candidate list once. Those scoped
+   hooks call `rtk-claude-safe claude-hook`, which rejects complex or uncertain shell commands and
+   emits direct `updatedInput.command` rewrites. Idempotent — running again is a no-op if the scoped
+   hooks are already current. Other user hooks under the same matcher are preserved.
 4. **Patch Codex when present.** Creates or updates `~/.codex/hooks.json` with one `^Bash$`
    `PreToolUse` command hook that calls `rtk-claude-safe codex-hook`. Other hook events, matcher
    groups, and user hooks are preserved.
+
+If any config write fails, the command rolls back the files it touched. Hidden hook commands take
+the opposite stance: if RTK is missing, stale, prerelease, or unparseable at hook runtime, they emit
+no output so Claude or Codex runs the original command unchanged.
 
 ### Codex support
 
@@ -100,6 +104,7 @@ After `rtk-claude-safe init` patches Codex, open Codex CLI, run `/hooks`, review
 Not supported in this release:
 
 - native Windows Codex command execution
+- Windows ARM64 RTK installation
 - `codex exec`
 - TOML editing
 - `PermissionRequest` behavior
@@ -110,22 +115,21 @@ hook, and the Python hook executable applies the allowlist internally. The hook 
 payloads, non-Bash tools, complex shell commands, excluded commands, and already-wrapped `rtk ...`
 commands emit no output so Codex runs the original command.
 
-### Recommended companions (not done by this tool)
+### Recommended Companion Config
 
-These complement the scoped allowlist but live outside `~/.claude/settings.json`:
+The installer enforces `rtk >= 0.42.4` for mutations, but RTK's own config can still provide a
+backup exclusion layer outside this package:
 
-- **Pin to rtk ≥ 0.37.1.** Several of the bugs cited above were fixed in the v0.34–v0.37 window
-  (`read`-as-`cat`, diff condense, git subdir argument parsing, the new Rust hook engine).
-- **Belt-and-braces `~/.config/rtk/config.toml`:**
-  ```toml
-  [hooks]
-  exclude_commands = [
-    "ls", "curl", "playwright", "rtk json",
-    "next dev", "next start", "prisma studio", "tsc --watch",
-  ]
-  ```
-  These catch the cases where Claude reaches for the bare command name even if your `if`-gated
-  allowlist wouldn't have matched it.
+```toml
+[hooks]
+exclude_commands = [
+  "ls", "curl", "playwright", "rtk json",
+  "next dev", "next start", "prisma studio", "tsc --watch",
+]
+```
+
+This is optional. The Python hooks already deny those shapes before rewriting, but the RTK config
+helps if another agent integration uses RTK directly.
 
 ## Layout
 
@@ -137,8 +141,11 @@ rtk_claude_safe/
 ├── cli.py             # argparse entry point
 ├── codex_hook.py      # Codex stdin/stdout PreToolUse hook handler
 ├── codex_settings.py  # idempotent Codex hooks.json patcher
+├── hook_command.py    # stable hook command path construction
 ├── hooks.py           # compatibility shim
 ├── installer.py       # OS/arch detection, GitHub release download, binary extraction
+├── managed_hooks.py   # exact detection of old/current managed hook commands
+├── rtk_runtime.py     # RTK version probing and compatibility checks
 └── settings.py        # compatibility shim
 ```
 

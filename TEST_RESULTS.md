@@ -1,103 +1,109 @@
-# v0.3.0 Verification Results
+# v0.4.0 Verification Results
 
-Recorded: 2026-06-23T01:16:01-04:00
+Recorded: 2026-06-23
 
-Branch: `codex/conservative-safe-rewrites`
+Branch: `update-rtk-0424-baseline`
+
+## Scope
+
+This change updates the repository's RTK compatibility baseline to stable RTK `v0.42.4` and adds
+runtime enforcement:
+
+- `rtk-claude-safe init` fails before config mutation when an existing RTK binary is older than
+  `0.42.4`, prerelease, or unparseable.
+- Missing RTK still installs from the latest stable GitHub release, but the installer verifies
+  release metadata, API digests, checksums, archive shape, binary version, and PATH reachability.
+- Hidden Claude and Codex hook entrypoints fail open when runtime RTK is missing or unsupported.
+- Claude settings are patched directly by this package; the installer no longer delegates to an
+  upstream broad hook installer.
 
 ## Automated Checks
 
-- `/tmp/rtk-claude-safe-venv/bin/python -m pytest`
+- `uv run --extra dev pytest -q`
   - Result: passed
-  - Coverage: 179 tests
+  - Coverage: 233 tests
 - `python3 -m compileall rtk_claude_safe`
   - Result: passed
 - `git diff --check master...HEAD`
   - Result: passed
-- `/tmp/rtk-claude-safe-venv/bin/rtk-claude-safe --version`
-  - Result: `rtk-claude-safe 0.3.0`
-  - Public help shows only `init`; hidden hook entrypoints are not exposed.
-
-## Direct Hook Smoke Tests
-
-- Codex hook:
-  - Allow cases per hook: 13
-  - Deny/fail-open cases per hook: 20
-  - Rewrites emit `permissionDecision: "allow"` plus `updatedInput.command`.
-- Claude hook:
-  - Allow cases per hook: 13
-  - Deny/fail-open cases per hook: 20
-  - Rewrites emit `permissionDecision: "ask"` plus `updatedInput.command`.
-- Both hooks preserve unrelated `tool_input` fields.
-- Non-Bash Codex payloads emit empty stdout.
-
-Representative rewritten commands:
-
-- `git status` -> `rtk git status`
-- `git log --oneline -n 20` -> `rtk git log --oneline -n 20`
-- `gh pr view 123` -> `rtk gh pr view 123`
-- `pip show pytest` -> `rtk pip show pytest`
-- `eslint .` -> `rtk lint .`
-- `npx vitest run` -> `rtk npx vitest run`
-
-Representative fail-open commands:
-
-- `git commit -m test`
-- `git push`
-- `git diff --name-only`
-- `npm run dev`
-- `cargo build --message-format=json`
-- `gh pr view 1 --json=title`
-- `gh pr view 1 --comments`
-- `gh pr view 1 -wc`
-- `gh repo view --web`
-- `eslint . -f=json-with-metadata`
-- `pnpm exec vitest run --reporter json-summary`
-- `prisma migrate reset --force`
-
-## Global Install And Idempotency
-
-- `pipx install --force --editable .`
-  - Result: installed global `rtk-claude-safe 0.3.0`
-- `rtk-claude-safe init` run twice against real global config:
-  - `~/.claude/settings.json` SHA-256 unchanged after both runs.
-  - `~/.codex/hooks.json` SHA-256 unchanged after both runs.
-  - Codex managed hooks: exactly 1.
-  - Claude managed hooks: 75 scoped candidate entries.
-  - Managed commands point at `/home/userc/.local/share/pipx/venvs/rtk-claude-safe/bin/rtk-claude-safe`.
-- Global hook smoke test:
-  - Result: passed
-  - Codex rewrites use `permissionDecision: "allow"`.
-  - Claude rewrites use `permissionDecision: "ask"`.
+- `rtk-claude-safe --version`
+  - Result: `rtk-claude-safe 0.4.0`
+- `rtk --version`
+  - Result after upgrade: `rtk 0.42.4`
 
 ## Review Loop
 
-- Initial branch-diff review loop found no remaining actionable findings after targeted fixes.
-- Final post-validation review loop findings addressed:
-  - Deny unsafe `gh pr/issue view --comments`.
-  - Restrict Prisma migrate rewrites.
-  - Deny `gh` `-c`, `-q`, `-t`, `--web`, clustered, and attached shorthand variants.
-  - Preserve Claude permission flow with `permissionDecision: "ask"`.
-  - Deny JSON-like formatter/reporter outputs such as `json-with-metadata` and `json-summary`.
-  - Fail open when `rtk` is missing at hook runtime.
-- Final review pass:
-  - Result: no actionable findings worth addressing.
-  - Residual risk: the review subagent could not run pytest in its environment, but it verified compileall and diff whitespace; the main validation environment ran the full suite.
+- Pass 1 finding addressed:
+  - Windows hook command cleanup parsed stored commands as POSIX shell, so unquoted Windows
+    backslash paths emitted by `subprocess.list2cmdline()` were not recognized as managed hooks.
+  - Commit: `9f09176 Recognize Windows managed hook commands`
+- Pass 2 finding addressed:
+  - Installer release verification needed direct tests for asset/digest/checksum wiring.
+  - Commit: `440330f Cover verified RTK release downloads`
+- Pass 3 findings addressed:
+  - Added archive payload digest mismatch coverage after API and `checksums.txt` agree.
+  - Added subprocess-backed runtime policy tests for stale, prerelease, and unparseable RTK output.
+  - Commit: `55b2142 Harden RTK verification tests`
+- Pass 4 result:
+  - No findings worth addressing.
+
+## Global Install And Idempotency
+
+- Initial installed RTK before upgrade:
+  - `rtk 0.37.2`
+- Stale RTK behavior:
+  - `rtk-claude-safe init` exited `1`.
+  - `~/.claude/settings.json` and `~/.codex/hooks.json` SHA-256 hashes were unchanged.
+- RTK upgrade:
+  - Installed verified latest stable asset `rtk-x86_64-unknown-linux-musl.tar.gz`.
+  - Result: `/home/userc/.local/bin/rtk` reports `rtk 0.42.4`.
+- Package install:
+  - `pipx install --force --editable .`
+  - Result: globally installed `rtk-claude-safe 0.4.0`.
+- Real global `init` run twice:
+  - Both runs reported Claude and Codex hooks already current.
+  - `~/.claude/settings.json` SHA-256 stayed
+    `0b3718987b58048d8e42f799ab31b976f07c19ba214b3162f39e384483f445a1`.
+  - `~/.codex/hooks.json` SHA-256 stayed
+    `9a3ec55124b61ec228c5f112ce161b6e636aef8264ab8f0d894159e97910d8b7`.
+- Installed hook shape:
+  - Claude managed hooks: 75 scoped candidate entries.
+  - Codex managed hooks: 1 `^Bash$` hook.
+  - Both point at `/home/userc/.local/share/pipx/venvs/rtk-claude-safe/bin/rtk-claude-safe`.
+
+## Direct Hook Smoke Tests
+
+- Codex:
+  - `git status` -> `rtk git status`
+  - `ls` -> empty stdout
+  - `git diff` -> empty stdout
+  - `curl https://example.com` -> empty stdout
+  - `git status | cat` -> empty stdout
+  - non-Bash payload -> empty stdout
+- Claude:
+  - `git status` -> `rtk git status`
+  - `git diff` -> empty stdout
+- Real RTK wrapped commands:
+  - `rtk git status --short` executed successfully.
+  - `rtk git diff --stat` executed successfully.
 
 ## RTK Gain Snapshot
 
-- Installed RTK: `rtk 0.37.2`
-- Command used: `rtk gain -H`
-  - `rtk gain history` is not supported by this installed RTK version.
-- Snapshot:
-  - Total commands: 341
-  - Input tokens: 628.7K
-  - Output tokens: 19.3K
-  - Tokens saved: 609.6K (97.0%)
-- Note: `rtk gain -H` prints `[warn] No hook installed`; this is RTK's own hook detection and does
-  not recognize the `rtk-claude-safe` managed hooks.
+- Command used: `rtk gain --history`
+- Final snapshot:
+  - Total commands: 516
+  - Input tokens: 648.0K
+  - Output tokens: 36.2K
+  - Tokens saved: 612.0K (94.4%)
+- Delta during final smoke stage:
+  - Total commands increased from 514 to 516.
+  - Tokens saved stayed at 612.0K because the final smoke commands were tiny `git status` /
+    `git diff --stat` checks with effectively zero savings.
+- Note: RTK still prints `[warn] No hook installed`; that is RTK's own hook detector and does not
+  recognize `rtk-claude-safe` managed hooks.
 
 ## Manual Residual Step
 
-Interactive Codex CLI trust cannot be completed in CI. After install, open Codex CLI, run `/hooks`,
-trust the `rtk-claude-safe` hook, then ask Codex to run `git status`; expected rewritten command is
-`rtk git status`.
+Interactive Codex CLI trust cannot be completed non-interactively. Open Codex CLI, run `/hooks`,
+trust the `rtk-claude-safe` hook if prompted, then ask Codex to run `git status`; expected rewritten
+command is `rtk git status`.

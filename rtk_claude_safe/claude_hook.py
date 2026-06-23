@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from typing import Any, TextIO
 
 from rtk_claude_safe.allowlist import rewrite_command_for_agent
+from rtk_claude_safe.rtk_runtime import runtime_rtk_supported
 
 
 def build_rewrite_output(tool_input: dict[str, Any], command: str) -> dict[str, Any]:
@@ -40,7 +40,7 @@ def maybe_rewrite_payload(payload: Any) -> dict[str, Any] | None:
     rewrite = rewrite_command_for_agent(command, "claude")
     if rewrite is None:
         return None
-    if shutil.which("rtk") is None:
+    if not runtime_rtk_supported():
         return None
     return build_rewrite_output(tool_input, rewrite)
 

@@ -162,6 +162,53 @@ def test_claude_settings_remove_stale_safe_wrapper_paths(tmp_path) -> None:
 
 
 @pytest.mark.parametrize(
+    "stale_command",
+    [
+        "rtk hook claude",
+        "rtk.exe hook claude",
+        '"/opt/RTK Dir/rtk" hook claude',
+        "FOO=bar rtk hook claude",
+        "env rtk hook claude",
+        "/usr/bin/env rtk hook claude",
+        "env FOO=bar rtk hook claude",
+        "rtk-claude-safe claude-hook",
+        "rtk-claude-safe.exe claude-hook",
+        r"C:\Tools\rtk-claude-safe.exe claude-hook",
+        "python -m rtk_claude_safe claude-hook",
+        "python3.11 -m rtk_claude_safe claude-hook",
+        r"C:\Python312\python.exe -m rtk_claude_safe claude-hook",
+        '"/opt/Python Dir/python3" -m rtk_claude_safe claude-hook',
+    ],
+)
+def test_claude_settings_remove_managed_hook_variants(tmp_path, stale_command: str) -> None:
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "Bash",
+                            "hooks": [
+                                {"type": "command", "command": stale_command},
+                                {"type": "command", "command": "echo rtk-claude-safe claude-hook"},
+                            ],
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
+
+    hooks = _read(settings_path)["hooks"]["PreToolUse"][0]["hooks"]
+    assert {"type": "command", "command": stale_command} not in hooks
+    assert {"type": "command", "command": "echo rtk-claude-safe claude-hook"} in hooks
+
+
+@pytest.mark.parametrize(
     ("content", "message"),
     [
         ("[]", "must contain a JSON object"),
