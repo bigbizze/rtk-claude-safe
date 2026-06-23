@@ -120,6 +120,8 @@ _MACHINE_OUTPUT_FLAGS = {
     "--parseable",
     "-z",
     "--null",
+    "-q",
+    "-t",
 }
 _INLINE_MACHINE_OUTPUT_FLAGS = {
     "--json",
@@ -485,7 +487,7 @@ def _rewrite_gh(parts: list[str]) -> str | None:
     if len(parts) < 3:
         return None
     area, action = parts[1], parts[2]
-    if area in {"pr", "issue"} and action == "view" and "--comments" in parts[3:]:
+    if area in {"pr", "issue"} and action == "view" and _has_gh_comments_flag(parts[3:]):
         return None
     if area == "pr" and action in {"list", "view"}:
         return _rtk_prefix(parts)
@@ -498,6 +500,10 @@ def _rewrite_gh(parts: list[str]) -> str | None:
     if area == "repo" and action in {"view", "list"}:
         return _rtk_prefix(parts)
     return None
+
+
+def _has_gh_comments_flag(args: list[str]) -> bool:
+    return any(arg == "-c" or arg == "--comments" or arg.startswith("--comments=") for arg in args)
 
 
 def _rewrite_prisma(parts: list[str]) -> str | None:
