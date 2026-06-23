@@ -73,7 +73,7 @@ CANDIDATE_PATTERNS: list[str] = [
     "prisma db push*",
     # git
     "git status*",
-    "git log --oneline*",
+    "git log*",
     "git stash list*",
     "git worktree list*",
     "git diff --stat*",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from rtk_claude_safe.allowlist import (
+    build_claude_scoped_hooks,
     is_already_rtk_wrapped,
     is_complex_shell_command,
     matches_allowlist,
@@ -18,7 +19,9 @@ from rtk_claude_safe.allowlist import (
         "git status --short",
         "git status -s",
         "git log --oneline -n 20",
+        "git log -n 20 --oneline",
         "git log --oneline --max-count 20",
+        "git log --max-count=20 --oneline",
         "npm run test",
         "npm run typecheck",
         "pnpm run format:check",
@@ -71,6 +74,20 @@ def test_does_not_match_allowlist(command: str) -> None:
 def test_rewrite_command_for_agent(command: str, expected: str) -> None:
     assert rewrite_command_for_agent(command, "codex") == expected
     assert rewrite_command_for_agent(command, "claude") == expected
+
+
+def test_claude_candidate_hooks_cover_safe_git_log_flag_order() -> None:
+    hooks = build_claude_scoped_hooks("rtk-claude-safe claude-hook")
+    expected_hook = {
+        "type": "command",
+        "command": "rtk-claude-safe claude-hook",
+        "if": "Bash(git log*)",
+    }
+
+    assert expected_hook in hooks
+    assert rewrite_command_for_agent("git log -n 20 --oneline", "claude") == (
+        "rtk git log -n 20 --oneline"
+    )
 
 
 @pytest.mark.parametrize(
