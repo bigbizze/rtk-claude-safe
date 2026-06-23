@@ -108,6 +108,43 @@ def test_codex_hooks_update_stale_command_path(tmp_path) -> None:
     assert commands == ["/new/rtk-claude-safe codex-hook"]
 
 
+def test_codex_hooks_remove_stale_entries_from_duplicate_bash_groups(tmp_path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    hooks_path = codex_home / "hooks.json"
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": CODEX_BASH_MATCHER,
+                            "hooks": [
+                                {"type": "command", "command": "/old/rtk-claude-safe codex-hook"},
+                                {"type": "command", "command": "user-hook"},
+                            ],
+                        },
+                        {
+                            "matcher": CODEX_BASH_MATCHER,
+                            "hooks": [
+                                {"type": "command", "command": "/older/rtk-claude-safe codex-hook"}
+                            ],
+                        },
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert patch_codex_hooks(hooks_path, command="/new/rtk-claude-safe codex-hook")
+
+    data = json.loads(hooks_path.read_text(encoding="utf-8"))
+    groups = data["hooks"]["PreToolUse"]
+    commands = [hook["command"] for group in groups for hook in group["hooks"]]
+    assert commands == ["user-hook", "/new/rtk-claude-safe codex-hook"]
+
+
 def test_codex_hooks_error_cleanly_on_malformed_json(tmp_path) -> None:
     codex_home = tmp_path / ".codex"
     codex_home.mkdir()

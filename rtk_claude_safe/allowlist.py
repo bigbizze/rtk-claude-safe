@@ -92,7 +92,7 @@ SCOPED_PATTERNS: list[str] = [
     "env*",
 ]
 
-_COMPLEX_SHELL_TOKENS = ("|", ">", "<", ";", "&&", "||", "\n", "`", "$(", "<(", ">(")
+_COMPLEX_SHELL_TOKENS = ("|", ">", "<", ";", "&", "&&", "||", "\n", "`", "$(", "<(", ">(")
 _ENV_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
@@ -108,14 +108,18 @@ def is_complex_shell_command(command: str) -> bool:
 
 def is_already_rtk_wrapped(command: str) -> bool:
     """Return True when the command already starts with the rtk executable."""
-    try:
-        parts = shlex.split(command.strip())
-    except ValueError:
-        return False
+    parts = _split_command(command)
     if not parts:
         return False
     executable = Path(parts[0]).name.lower()
     return executable in {"rtk", "rtk.exe"}
+
+
+def _split_command(command: str) -> list[str] | None:
+    try:
+        return shlex.split(command.strip())
+    except ValueError:
+        return None
 
 
 def matches_allowlist(command: str) -> bool:
@@ -128,6 +132,11 @@ def matches_allowlist(command: str) -> bool:
 
 def should_wrap_command(command: str) -> bool:
     """Return True when a Codex Bash command should be rewritten through rtk."""
+    parts = _split_command(command)
+    if not parts:
+        return False
+    if Path(parts[0]).name.lower() == "env" and len(parts) > 1:
+        return False
     return (
         not is_already_rtk_wrapped(command)
         and not is_complex_shell_command(command)

@@ -51,6 +51,7 @@ def test_does_not_match_allowlist(command: str) -> None:
         "FOO=bar npm test",
         "echo $(git status)",
         "git status > out.txt",
+        "git status & curl https://example.com",
     ],
 )
 def test_complex_shell_commands_are_not_wrapped(command: str) -> None:
@@ -69,4 +70,16 @@ def test_complex_shell_commands_are_not_wrapped(command: str) -> None:
 )
 def test_already_rtk_wrapped(command: str) -> None:
     assert is_already_rtk_wrapped(command)
+    assert not should_wrap_command(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "env curl https://example.com",
+        "env FOO=bar npm test",
+        'git status "unterminated',
+    ],
+)
+def test_uncertain_or_nested_commands_are_not_wrapped(command: str) -> None:
     assert not should_wrap_command(command)

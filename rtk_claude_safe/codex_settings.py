@@ -66,17 +66,14 @@ def _is_rtk_codex_hook(entry: Any) -> bool:
     )
 
 
-def _patch_bash_group(group: dict[str, Any], hook_entry: dict[str, Any], path: Path) -> None:
+def _remove_rtk_hooks_from_bash_group(group: dict[str, Any], path: Path) -> None:
     hooks = group.get("hooks")
     if hooks is None:
-        group["hooks"] = [hook_entry]
+        group["hooks"] = []
         return
     if not isinstance(hooks, list):
         raise ValueError(f"hooks.PreToolUse matcher {CODEX_BASH_MATCHER!r} in {path} has non-list hooks")
-
-    kept = [entry for entry in hooks if not _is_rtk_codex_hook(entry)]
-    kept.append(hook_entry)
-    group["hooks"] = kept
+    group["hooks"] = [entry for entry in hooks if not _is_rtk_codex_hook(entry)]
 
 
 def patch_codex_hooks(
@@ -98,16 +95,17 @@ def patch_codex_hooks(
         raise ValueError(f"hooks.PreToolUse in {path} is not a list")
 
     hook_entry = build_codex_hook_entry(command)
-    bash_group = None
+    bash_groups: list[dict[str, Any]] = []
     for group in pre_tool_use:
         if isinstance(group, dict) and group.get("matcher") == CODEX_BASH_MATCHER:
-            bash_group = group
-            break
+            bash_groups.append(group)
 
-    if bash_group is None:
+    if not bash_groups:
         pre_tool_use.append({"matcher": CODEX_BASH_MATCHER, "hooks": [hook_entry]})
     else:
-        _patch_bash_group(bash_group, hook_entry, path)
+        for group in bash_groups:
+            _remove_rtk_hooks_from_bash_group(group, path)
+        bash_groups[0]["hooks"].append(hook_entry)
 
     changed = hooks_file != original
     if changed:
