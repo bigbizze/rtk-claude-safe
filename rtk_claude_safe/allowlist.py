@@ -237,7 +237,7 @@ def _has_machine_output_flag(parts: list[str]) -> bool:
                 return True
             if flag == "-json":
                 return True
-            if flag in _MACHINE_FORMAT_VALUE_FLAGS and value in _MACHINE_FORMAT_VALUES:
+            if flag in _MACHINE_FORMAT_VALUE_FLAGS and _is_machine_format_value(value):
                 return True
             if flag == "--reporter" and value.startswith("json"):
                 return True
@@ -252,10 +252,15 @@ def _has_machine_output_flag(parts: list[str]) -> bool:
         if (
             part in _MACHINE_FORMAT_VALUE_FLAGS
             and index + 1 < len(parts)
-            and parts[index + 1] in _MACHINE_FORMAT_VALUES
+            and _is_machine_format_value(parts[index + 1])
         ):
             return True
     return False
+
+
+def _is_machine_format_value(value: str) -> bool:
+    lowered = value.lower()
+    return lowered in _MACHINE_FORMAT_VALUES or lowered.startswith("json")
 
 
 def _has_watch_flag(parts: list[str]) -> bool:
