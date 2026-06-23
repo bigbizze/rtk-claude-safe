@@ -6,8 +6,8 @@ import json
 from rtk_claude_safe import claude_hook
 
 
-def _payload(command: str) -> str:
-    return json.dumps({"tool_input": {"command": command}})
+def _payload(command: str, tool_name: str = "Bash", **extra_tool_input) -> str:
+    return json.dumps({"tool_name": tool_name, "tool_input": {"command": command, **extra_tool_input}})
 
 
 def _run_hook(command: str) -> tuple[int, str]:
@@ -23,17 +23,24 @@ def test_claude_hook_rewrites_allowlisted_simple_command() -> None:
     assert json.loads(output) == {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
             "permissionDecisionReason": "RTK safe rewrite",
             "updatedInput": {"command": "rtk git status"},
         }
     }
 
 
-def test_claude_hook_uses_mapped_rewrite_command() -> None:
-    rc, output = _run_hook("eslint .")
+def test_claude_hook_uses_mapped_rewrite_command_and_preserves_extra_input() -> None:
+    stdout = io.StringIO()
+    rc = claude_hook.main(
+        stdin=io.StringIO(_payload("eslint .", description="lint the repo")), stdout=stdout
+    )
 
     assert rc == 0
-    assert json.loads(output)["hookSpecificOutput"]["updatedInput"] == {"command": "rtk lint ."}
+    assert json.loads(stdout.getvalue())["hookSpecificOutput"]["updatedInput"] == {
+        "command": "rtk lint .",
+        "description": "lint the repo",
+    }
 
 
 def test_claude_hook_fails_open_for_complex_command() -> None:
@@ -49,6 +56,15 @@ def test_claude_hook_fails_open_for_nested_env_command() -> None:
     stdout = io.StringIO()
 
     assert claude_hook.main(stdin=io.StringIO(_payload("env curl https://example.com")), stdout=stdout) == 0
+    assert stdout.getvalue() == ""
+
+
+def test_claude_hook_fails_open_for_non_bash_tool() -> None:
+    stdout = io.StringIO()
+
+    assert claude_hook.main(
+        stdin=io.StringIO(_payload("git status", tool_name="apply_patch")), stdout=stdout
+    ) == 0
     assert stdout.getvalue() == ""
 
 

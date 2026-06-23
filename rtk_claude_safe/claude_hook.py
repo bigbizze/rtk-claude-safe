@@ -9,13 +9,16 @@ from typing import Any, TextIO
 from rtk_claude_safe.allowlist import rewrite_command_for_agent
 
 
-def build_rewrite_output(command: str) -> dict[str, Any]:
+def build_rewrite_output(tool_input: dict[str, Any], command: str) -> dict[str, Any]:
     """Build Claude Code's PreToolUse rewrite payload."""
+    updated_input = dict(tool_input)
+    updated_input["command"] = command
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
             "permissionDecisionReason": "RTK safe rewrite",
-            "updatedInput": {"command": command},
+            "updatedInput": updated_input,
         }
     }
 
@@ -23,6 +26,8 @@ def build_rewrite_output(command: str) -> dict[str, Any]:
 def maybe_rewrite_payload(payload: Any) -> dict[str, Any] | None:
     """Return a Claude rewrite payload, or None to fail open."""
     if not isinstance(payload, dict):
+        return None
+    if payload.get("tool_name") != "Bash":
         return None
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):
@@ -34,7 +39,7 @@ def maybe_rewrite_payload(payload: Any) -> dict[str, Any] | None:
     rewrite = rewrite_command_for_agent(command, "claude")
     if rewrite is None:
         return None
-    return build_rewrite_output(rewrite)
+    return build_rewrite_output(tool_input, rewrite)
 
 
 def main(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:

@@ -114,6 +114,9 @@ _MACHINE_OUTPUT_FLAGS = {
     "--output",
     "--outputFile",
     "--output-file",
+    "--junit-xml",
+    "--junitxml",
+    "-json",
     "--parseable",
     "-z",
     "--null",
@@ -127,7 +130,32 @@ _INLINE_MACHINE_OUTPUT_FLAGS = {
     "--output",
     "--outputFile",
     "--output-file",
+    "--output-format",
 }
+_MACHINE_FORMAT_VALUE_FLAGS = {"-f", "--reporter", "--output-format"}
+_MACHINE_FORMAT_VALUES = {
+    "json",
+    "json-lines",
+    "github",
+    "gitlab",
+    "junit",
+    "junit-xml",
+    "xml",
+    "sarif",
+    "checkstyle",
+    "tap",
+}
+_MACHINE_REPORT_PREFIXES = (
+    "--junitxml",
+    "--json-report",
+    "--json-report-file",
+    "--xml-report",
+    "--html-report",
+    "--linecount-report",
+    "--any-exprs-report",
+    "--cobertura-xml-report",
+    "--txt-report",
+)
 _WATCH_FLAGS = {"-w", "--watch", "--watch-all", "--watchAll"}
 _SERVER_SCRIPT_WORDS = {"dev", "start", "serve", "server", "preview", "storybook", "watch"}
 _SAFE_SCRIPT_ROOTS = {"test", "lint", "build", "typecheck", "check", "format:check"}
@@ -207,9 +235,15 @@ def _has_machine_output_flag(parts: list[str]) -> bool:
                 return True
         if part.startswith("--porcelain") or part.startswith("--json-report"):
             return True
+        if part.startswith(_MACHINE_REPORT_PREFIXES):
+            return True
         if part.startswith("--coverage"):
             return True
-        if part == "--reporter" and index + 1 < len(parts) and parts[index + 1].startswith("json"):
+        if (
+            part in _MACHINE_FORMAT_VALUE_FLAGS
+            and index + 1 < len(parts)
+            and parts[index + 1] in _MACHINE_FORMAT_VALUES
+        ):
             return True
     return False
 

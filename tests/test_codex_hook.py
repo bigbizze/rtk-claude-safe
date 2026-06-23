@@ -27,10 +27,15 @@ def test_codex_hook_rewrites_allowlisted_bash_command() -> None:
 
 
 def test_codex_hook_uses_mapped_rewrite_command() -> None:
-    rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "eslint ."}})
+    rc, output = _run_hook(
+        {"tool_name": "Bash", "tool_input": {"command": "eslint .", "description": "lint"}}
+    )
 
     assert rc == 0
-    assert json.loads(output)["hookSpecificOutput"]["updatedInput"] == {"command": "rtk lint ."}
+    assert json.loads(output)["hookSpecificOutput"]["updatedInput"] == {
+        "command": "rtk lint .",
+        "description": "lint",
+    }
 
 
 def test_codex_hook_emits_nothing_for_non_allowlisted_command() -> None:

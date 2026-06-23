@@ -9,13 +9,15 @@ from typing import Any, TextIO
 from rtk_claude_safe.allowlist import rewrite_command_for_agent
 
 
-def build_rewrite_output(command: str) -> dict[str, Any]:
+def build_rewrite_output(tool_input: dict[str, Any], command: str) -> dict[str, Any]:
     """Build Codex's supported PreToolUse rewrite payload."""
+    updated_input = dict(tool_input)
+    updated_input["command"] = command
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
-            "updatedInput": {"command": command},
+            "updatedInput": updated_input,
         }
     }
 
@@ -39,7 +41,7 @@ def maybe_rewrite_payload(payload: Any) -> dict[str, Any] | None:
     if rewrite is None:
         return None
 
-    return build_rewrite_output(rewrite)
+    return build_rewrite_output(tool_input, rewrite)
 
 
 def main(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
