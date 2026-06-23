@@ -1,8 +1,8 @@
-j# rtk-claude-safe
+# rtk-claude-safe
 
 A Python wrapper around [rtk (Rust Token Killer)](https://github.com/rtk-ai/rtk) that installs the
-right binary for your platform and applies a curated, **safer** Claude Code hook configuration in
-one command.
+right binary for your platform and applies curated, **safer** Claude Code and Codex hook
+configuration in one command.
 
 ```bash
 pipx install git+https://github.com/bigbizze/rtk-claude-safe.git
@@ -21,9 +21,13 @@ The fix isn't to stop using rtk — its filtering really does save 60-90% of tok
 commands. The fix is to scope the hook to the commands where the filter is well-trodden and
 correctness-preserving, and to leave everything else alone.
 
-That's all this package does: install rtk, run rtk's official hook installer, then rewrite
-`~/.claude/settings.json` so the bare `{ "command": "rtk hook claude" }` entry under the `Bash`
-matcher is replaced with ~70 narrowly-scoped `Bash(<pattern>*)` matchers.
+That's all this package does: install rtk, detect supported global agent config folders, and patch
+only the agents that are already present. For Claude Code, it runs rtk's official hook installer
+and rewrites `~/.claude/settings.json` so the bare `{ "command": "rtk hook claude" }` entry under
+the `Bash` matcher is replaced with ~70 narrowly-scoped `Bash(<pattern>*)` matchers. For Codex, it
+installs one `^Bash$` `PreToolUse` hook in `~/.codex/hooks.json`; that hook reads
+`tool_input.command` and applies the same allowlist internally before rewriting safe simple
+commands to `rtk <command>`.
 
 ### The specific failure modes that drove the allowlist
 
@@ -58,8 +62,9 @@ These are all open bugs in `rtk-ai/rtk` as of late April 2026:
 - **`vitest run --coverage` silently drops coverage data.** (Issue #220.) Bare `vitest*` is
   whitelisted, but coverage runs should go through `rtk proxy vitest run --coverage`.
 
-The allowlist itself — defined in `rtk_claude_safe/hooks.py` — covers the commands where the rtk
-filter is actively dogfooded by the maintainer or has been stable across several minor releases:
+The allowlist itself — defined in `rtk_claude_safe/allowlist.py` — covers the commands where the
+rtk filter is actively dogfooded by the maintainer or has been stable across several minor
+releases:
 cargo (build/test/clippy/check/run/fmt --check/doc/install/nextest), the JS/TS test+lint+type
 toolchain (vitest, jest, pytest, tsc, eslint, biome, ruff, mypy, prettier --check, next build),
 pnpm/npm package management and runners, prisma generate/migrate/db push, the safe surface of git
@@ -69,14 +74,42 @@ subcommands, no `--comments`, no `pr status`), and a few small utilities (`tree`
 
 ### What `rtk-claude-safe init` does
 
-1. **Install rtk if missing.** Detects OS/arch (mirroring rtk's `install.sh`), fetches the latest
+1. **Detect installed agents.** If `~/.claude/` exists, Claude Code is patched. If `~/.codex/`
+   exists, Codex is patched. If neither exists, the command exits without installing rtk or creating
+   agent config directories.
+2. **Install rtk if needed.** Detects OS/arch (mirroring rtk's `install.sh`), fetches the latest
    release from `rtk-ai/rtk`, and extracts the binary to `~/.local/bin/rtk`. Skipped if `rtk` is
    already on `PATH`.
-2. **Run `rtk init -g --hook-only`.** Lays down rtk's normal global hook + config.
-3. **Patch `~/.claude/settings.json`.** Finds the `PreToolUse` entry whose matcher is `Bash`,
-   removes the bare `rtk hook claude` hook, and replaces it with the scoped list. Idempotent —
-   running again is a no-op if the scoped hooks are already in place. Other hooks under the same
-   matcher are preserved.
+3. **Patch Claude Code when present.** Runs `rtk init -g --hook-only`, finds the `PreToolUse`
+   entry whose matcher is `Bash`, removes the bare `rtk hook claude` hook, and replaces it with the
+   scoped list. Idempotent — running again is a no-op if the scoped hooks are already in place.
+   Other hooks under the same matcher are preserved.
+4. **Patch Codex when present.** Creates or updates `~/.codex/hooks.json` with one `^Bash$`
+   `PreToolUse` command hook that calls `rtk-claude-safe codex-hook`. Other hook events, matcher
+   groups, and user hooks are preserved.
+
+### Codex support
+
+Codex support is experimental and scoped to the interactive Codex CLI on macOS, Linux, and WSL. It
+does not use or require upstream `rtk hook codex`; this package's own hook rewrites allowlisted
+simple Bash commands directly to `rtk <command>`.
+
+After `rtk-claude-safe init` patches Codex, open Codex CLI, run `/hooks`, review and trust the
+`rtk-claude-safe` hook, then ask Codex to run `git status`. The expected rewritten command is
+`rtk git status`.
+
+Not supported in this release:
+
+- native Windows Codex command execution
+- `codex exec`
+- TOML editing
+- `PermissionRequest` behavior
+- using this as a security boundary
+
+Codex matchers apply to tool names, not shell command strings. That means Codex gets one `^Bash$`
+hook, and the Python hook executable applies the allowlist internally. The hook fails open: invalid
+payloads, non-Bash tools, complex shell commands, excluded commands, and already-wrapped `rtk ...`
+commands emit no output so Codex runs the original command.
 
 ### Recommended companions (not done by this tool)
 
@@ -107,11 +140,15 @@ These complement the scoped allowlist but live outside `~/.claude/settings.json`
 
 ```
 rtk_claude_safe/
-├── cli.py         # argparse entry point
-├── installer.py   # OS/arch detection, GitHub release download, binary extraction
-├── hooks.py       # the curated list of Bash(<pattern>*) matchers
-└── settings.py    # idempotent settings.json patcher
+├── allowlist.py        # shared safe command patterns and match helpers
+├── claude_settings.py  # idempotent Claude settings.json patcher
+├── cli.py             # argparse entry point
+├── codex_hook.py      # Codex stdin/stdout PreToolUse hook handler
+├── codex_settings.py  # idempotent Codex hooks.json patcher
+├── hooks.py           # compatibility shim
+├── installer.py       # OS/arch detection, GitHub release download, binary extraction
+└── settings.py        # compatibility shim
 ```
 
-`hooks.py` is the single place to edit if you want to tighten or loosen the allowlist for your
+`allowlist.py` is the single place to edit if you want to tighten or loosen the allowlist for your
 stack.
