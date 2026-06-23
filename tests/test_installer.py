@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import stat
 import tarfile
 import zipfile
@@ -108,6 +109,138 @@ def test_extract_zip_rejects_symlink(tmp_path, monkeypatch) -> None:
 
     with pytest.raises(installer.InstallError, match="exactly one"):
         installer._extract_rtk_binary(archive.getvalue(), "zip", tmp_path / "rtk")
+
+
+def _asset(name: str, data: bytes, digest: str | None = None) -> dict[str, str]:
+    return {
+        "name": name,
+        "browser_download_url": f"https://example.test/{name}",
+        "digest": f"sha256:{digest or hashlib.sha256(data).hexdigest()}",
+    }
+
+
+def test_download_verified_archive_validates_release_assets(monkeypatch) -> None:
+    archive_name = "rtk-x86_64-unknown-linux-musl.tar.gz"
+    archive = b"archive-bytes"
+    archive_digest = hashlib.sha256(archive).hexdigest()
+    checksums = f"{archive_digest}  {archive_name}\n".encode()
+    release = {
+        "tag_name": "v0.42.4",
+        "draft": False,
+        "prerelease": False,
+        "assets": [
+            _asset(archive_name, archive),
+            _asset("checksums.txt", checksums),
+        ],
+    }
+
+    monkeypatch.setattr(installer, "_fetch_latest_release", lambda: release)
+    monkeypatch.setattr(
+        installer,
+        "_download",
+        lambda url: checksums if url.endswith("checksums.txt") else archive,
+    )
+
+    assert installer._download_verified_archive(
+        "x86_64-unknown-linux-musl", "tar.gz"
+    ) == (archive_name, archive)
+
+
+def test_download_verified_archive_rejects_missing_digest(monkeypatch) -> None:
+    archive_name = "rtk-x86_64-unknown-linux-musl.tar.gz"
+    archive = b"archive-bytes"
+    release = {
+        "tag_name": "v0.42.4",
+        "draft": False,
+        "prerelease": False,
+        "assets": [
+            {"name": archive_name, "browser_download_url": "https://example.test/archive"},
+            _asset("checksums.txt", b""),
+        ],
+    }
+
+    monkeypatch.setattr(installer, "_fetch_latest_release", lambda: release)
+
+    with pytest.raises(installer.InstallError, match="has no digest"):
+        installer._download_verified_archive("x86_64-unknown-linux-musl", "tar.gz")
+
+
+def test_download_verified_archive_rejects_checksum_file_digest_mismatch(monkeypatch) -> None:
+    archive_name = "rtk-x86_64-unknown-linux-musl.tar.gz"
+    archive = b"archive-bytes"
+    archive_digest = hashlib.sha256(archive).hexdigest()
+    checksums = f"{archive_digest}  {archive_name}\n".encode()
+    release = {
+        "tag_name": "v0.42.4",
+        "draft": False,
+        "prerelease": False,
+        "assets": [
+            _asset(archive_name, archive),
+            _asset("checksums.txt", checksums, digest="0" * 64),
+        ],
+    }
+
+    monkeypatch.setattr(installer, "_fetch_latest_release", lambda: release)
+    monkeypatch.setattr(installer, "_download", lambda _url: checksums)
+
+    with pytest.raises(installer.InstallError, match="SHA-256 mismatch for checksums.txt"):
+        installer._download_verified_archive("x86_64-unknown-linux-musl", "tar.gz")
+
+
+def test_download_verified_archive_rejects_archive_digest_disagreement(monkeypatch) -> None:
+    archive_name = "rtk-x86_64-unknown-linux-musl.tar.gz"
+    archive = b"archive-bytes"
+    checksum_digest = "1" * 64
+    checksums = f"{checksum_digest}  {archive_name}\n".encode()
+    release = {
+        "tag_name": "v0.42.4",
+        "draft": False,
+        "prerelease": False,
+        "assets": [
+            _asset(archive_name, archive),
+            _asset("checksums.txt", checksums),
+        ],
+    }
+
+    monkeypatch.setattr(installer, "_fetch_latest_release", lambda: release)
+    monkeypatch.setattr(installer, "_download", lambda _url: checksums)
+
+    with pytest.raises(installer.InstallError, match="disagree"):
+        installer._download_verified_archive("x86_64-unknown-linux-musl", "tar.gz")
+
+
+def test_download_verified_archive_rejects_duplicate_assets(monkeypatch) -> None:
+    archive_name = "rtk-x86_64-unknown-linux-musl.tar.gz"
+    archive = b"archive-bytes"
+    release = {
+        "tag_name": "v0.42.4",
+        "draft": False,
+        "prerelease": False,
+        "assets": [
+            _asset(archive_name, archive),
+            _asset(archive_name, archive),
+            _asset("checksums.txt", b""),
+        ],
+    }
+
+    monkeypatch.setattr(installer, "_fetch_latest_release", lambda: release)
+
+    with pytest.raises(installer.InstallError, match="Expected exactly one release asset"):
+        installer._download_verified_archive("x86_64-unknown-linux-musl", "tar.gz")
+
+
+def test_download_verified_archive_rejects_missing_assets(monkeypatch) -> None:
+    release = {
+        "tag_name": "v0.42.4",
+        "draft": False,
+        "prerelease": False,
+        "assets": [_asset("checksums.txt", b"")],
+    }
+
+    monkeypatch.setattr(installer, "_fetch_latest_release", lambda: release)
+
+    with pytest.raises(installer.InstallError, match="found 0"):
+        installer._download_verified_archive("x86_64-unknown-linux-musl", "tar.gz")
 
 
 def test_detect_target_rejects_windows_arm64(monkeypatch) -> None:
