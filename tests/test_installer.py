@@ -209,6 +209,33 @@ def test_download_verified_archive_rejects_archive_digest_disagreement(monkeypat
         installer._download_verified_archive("x86_64-unknown-linux-musl", "tar.gz")
 
 
+def test_download_verified_archive_rejects_archive_payload_digest_mismatch(monkeypatch) -> None:
+    archive_name = "rtk-x86_64-unknown-linux-musl.tar.gz"
+    expected_archive = b"expected-archive-bytes"
+    tampered_archive = b"tampered-archive-bytes"
+    archive_digest = hashlib.sha256(expected_archive).hexdigest()
+    checksums = f"{archive_digest}  {archive_name}\n".encode()
+    release = {
+        "tag_name": "v0.42.4",
+        "draft": False,
+        "prerelease": False,
+        "assets": [
+            _asset(archive_name, expected_archive),
+            _asset("checksums.txt", checksums),
+        ],
+    }
+
+    monkeypatch.setattr(installer, "_fetch_latest_release", lambda: release)
+    monkeypatch.setattr(
+        installer,
+        "_download",
+        lambda url: checksums if url.endswith("checksums.txt") else tampered_archive,
+    )
+
+    with pytest.raises(installer.InstallError, match=f"SHA-256 mismatch for {archive_name}"):
+        installer._download_verified_archive("x86_64-unknown-linux-musl", "tar.gz")
+
+
 def test_download_verified_archive_rejects_duplicate_assets(monkeypatch) -> None:
     archive_name = "rtk-x86_64-unknown-linux-musl.tar.gz"
     archive = b"archive-bytes"

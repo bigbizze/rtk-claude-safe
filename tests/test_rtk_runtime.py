@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import subprocess
 
+import pytest
+
 from rtk_claude_safe import rtk_runtime
 from rtk_claude_safe.rtk_runtime import RtkRuntimeError, parse_rtk_version_output
 
@@ -51,3 +53,37 @@ def test_probe_captures_subprocess_failures(monkeypatch, tmp_path) -> None:
     probe = rtk_runtime.probe_rtk(binary)
     assert not probe.supported
     assert "nope" in (probe.reason or "")
+
+
+def _fake_rtk(tmp_path, version_output: str) -> object:
+    rtk = tmp_path / "rtk"
+    rtk.write_text(f"#!/bin/sh\nprintf '%s\\n' {version_output!r}\n", encoding="utf-8")
+    rtk.chmod(0o755)
+    return rtk
+
+
+@pytest.mark.parametrize(
+    ("version_output", "reason"),
+    [
+        ("rtk 0.42.3", "not supported"),
+        ("rtk 0.43.0-rc.1", "not supported"),
+        ("warning: rtk 0.42.4 available", "could not find"),
+    ],
+)
+def test_probe_enforces_supported_stable_versions(tmp_path, version_output: str, reason: str) -> None:
+    rtk = _fake_rtk(tmp_path, version_output)
+
+    probe = rtk_runtime.probe_rtk(rtk)
+
+    assert not probe.supported
+    assert reason in (probe.reason or "")
+
+
+@pytest.mark.parametrize("version_output", ["rtk 0.42.3", "rtk 0.43.0-rc.1", "not rtk"])
+def test_require_supported_rtk_rejects_unsupported_outputs(
+    tmp_path, version_output: str
+) -> None:
+    rtk = _fake_rtk(tmp_path, version_output)
+
+    with pytest.raises(RtkRuntimeError, match="requires stable >= 0.42.4"):
+        rtk_runtime.require_supported_rtk(rtk)
