@@ -2,57 +2,105 @@ from __future__ import annotations
 
 import io
 import json
-import subprocess
+
+import pytest
 
 from rtk_claude_safe import claude_hook
 
 
-def _payload(command: str) -> str:
-    return json.dumps({"tool_input": {"command": command}})
+@pytest.fixture(autouse=True)
+def _rtk_available(monkeypatch) -> None:
+    monkeypatch.setattr(claude_hook.shutil, "which", lambda _name: "/bin/rtk")
 
 
-def test_claude_hook_delegates_allowlisted_simple_command(monkeypatch) -> None:
-    calls: list[tuple[list[str], str | None, bool | None]] = []
-
-    def fake_run(args, input=None, text=None):
-        calls.append((args, input, text))
-        return subprocess.CompletedProcess(args, 0)
-
-    monkeypatch.setattr(claude_hook.subprocess, "run", fake_run)
-    raw = _payload("git status")
-
-    assert claude_hook.main(stdin=io.StringIO(raw)) == 0
-    assert calls == [(["rtk", "hook", "claude"], raw, True)]
+def _payload(command: str, tool_name: str = "Bash", **extra_tool_input) -> str:
+    return json.dumps({"tool_name": tool_name, "tool_input": {"command": command, **extra_tool_input}})
 
 
-def test_claude_hook_fails_open_for_complex_command(monkeypatch) -> None:
-    calls = []
-    monkeypatch.setattr(claude_hook.subprocess, "run", lambda *args, **kwargs: calls.append(args))
-
-    assert claude_hook.main(stdin=io.StringIO(_payload("git status && curl https://example.com"))) == 0
-    assert calls == []
+def _run_hook(command: str) -> tuple[int, str]:
+    stdout = io.StringIO()
+    rc = claude_hook.main(stdin=io.StringIO(_payload(command)), stdout=stdout)
+    return rc, stdout.getvalue()
 
 
-def test_claude_hook_fails_open_for_nested_env_command(monkeypatch) -> None:
-    calls = []
-    monkeypatch.setattr(claude_hook.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+def test_claude_hook_rewrites_allowlisted_simple_command() -> None:
+    rc, output = _run_hook("git status")
 
-    assert claude_hook.main(stdin=io.StringIO(_payload("env curl https://example.com"))) == 0
-    assert calls == []
+    assert rc == 0
+    assert json.loads(output) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": "RTK safe rewrite",
+            "updatedInput": {"command": "rtk git status"},
+        }
+    }
+
+
+def test_claude_hook_asks_instead_of_auto_allowing_rewritten_commands() -> None:
+    rc, output = _run_hook("git status")
+
+    assert rc == 0
+    hook_output = json.loads(output)["hookSpecificOutput"]
+    assert hook_output["permissionDecision"] == "ask"
+
+
+def test_claude_hook_uses_mapped_rewrite_command_and_preserves_extra_input() -> None:
+    stdout = io.StringIO()
+    rc = claude_hook.main(
+        stdin=io.StringIO(_payload("eslint .", description="lint the repo")), stdout=stdout
+    )
+
+    assert rc == 0
+    assert json.loads(stdout.getvalue())["hookSpecificOutput"]["updatedInput"] == {
+        "command": "rtk lint .",
+        "description": "lint the repo",
+    }
+
+
+def test_claude_hook_fails_open_for_complex_command() -> None:
+    stdout = io.StringIO()
+
+    assert claude_hook.main(
+        stdin=io.StringIO(_payload("git status && curl https://example.com")), stdout=stdout
+    ) == 0
+    assert stdout.getvalue() == ""
+
+
+def test_claude_hook_fails_open_for_nested_env_command() -> None:
+    stdout = io.StringIO()
+
+    assert claude_hook.main(stdin=io.StringIO(_payload("env curl https://example.com")), stdout=stdout) == 0
+    assert stdout.getvalue() == ""
+
+
+def test_claude_hook_fails_open_for_non_bash_tool() -> None:
+    stdout = io.StringIO()
+
+    assert claude_hook.main(
+        stdin=io.StringIO(_payload("git status", tool_name="apply_patch")), stdout=stdout
+    ) == 0
+    assert stdout.getvalue() == ""
+
+
+def test_claude_hook_fails_open_for_risky_subset() -> None:
+    stdout = io.StringIO()
+
+    assert claude_hook.main(stdin=io.StringIO(_payload("npm run dev")), stdout=stdout) == 0
+    assert stdout.getvalue() == ""
 
 
 def test_claude_hook_fails_open_when_rtk_is_missing(monkeypatch) -> None:
-    def fake_run(*_args, **_kwargs):
-        raise FileNotFoundError
+    monkeypatch.setattr(claude_hook.shutil, "which", lambda _name: None)
 
-    monkeypatch.setattr(claude_hook.subprocess, "run", fake_run)
+    rc, output = _run_hook("git status")
 
-    assert claude_hook.main(stdin=io.StringIO(_payload("git status"))) == 0
+    assert rc == 0
+    assert output == ""
 
 
-def test_claude_hook_fails_open_for_invalid_json(monkeypatch) -> None:
-    calls = []
-    monkeypatch.setattr(claude_hook.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+def test_claude_hook_fails_open_for_invalid_json() -> None:
+    stdout = io.StringIO()
 
-    assert claude_hook.main(stdin=io.StringIO("{not json")) == 0
-    assert calls == []
+    assert claude_hook.main(stdin=io.StringIO("{not json"), stdout=stdout) == 0
+    assert stdout.getvalue() == ""

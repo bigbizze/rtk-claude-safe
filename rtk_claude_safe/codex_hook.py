@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from typing import Any, TextIO
 
-from rtk_claude_safe.allowlist import should_wrap_command
+from rtk_claude_safe.allowlist import rewrite_command_for_agent
 
 
-def build_rewrite_output(command: str) -> dict[str, Any]:
+def build_rewrite_output(tool_input: dict[str, Any], command: str) -> dict[str, Any]:
     """Build Codex's supported PreToolUse rewrite payload."""
+    updated_input = dict(tool_input)
+    updated_input["command"] = command
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
-            "updatedInput": {"command": f"rtk {command.strip()}"},
+            "updatedInput": updated_input,
         }
     }
 
@@ -35,10 +38,13 @@ def maybe_rewrite_payload(payload: Any) -> dict[str, Any] | None:
     if not isinstance(command, str):
         return None
 
-    if not should_wrap_command(command):
+    rewrite = rewrite_command_for_agent(command, "codex")
+    if rewrite is None:
+        return None
+    if shutil.which("rtk") is None:
         return None
 
-    return build_rewrite_output(command)
+    return build_rewrite_output(tool_input, rewrite)
 
 
 def main(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:

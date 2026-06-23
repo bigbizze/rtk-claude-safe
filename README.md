@@ -24,15 +24,15 @@ correctness-preserving, and to leave everything else alone.
 That's all this package does: install rtk, detect supported global agent config folders, and patch
 only the agents that are already present. For Claude Code, it runs rtk's official hook installer
 and rewrites `~/.claude/settings.json` so the bare `{ "command": "rtk hook claude" }` entry under
-the `Bash` matcher is replaced with ~70 narrowly-scoped `Bash(<pattern>*)` matchers that call
-`rtk-claude-safe claude-hook`. That wrapper applies fail-open checks before delegating to
-`rtk hook claude`. For Codex, it installs one `^Bash$` `PreToolUse` hook in
-`~/.codex/hooks.json`; that hook reads `tool_input.command` and applies the same allowlist
-internally before rewriting safe simple commands to `rtk <command>`.
+the `Bash` matcher is replaced with scoped `Bash(<pattern>*)` candidate matchers that call
+`rtk-claude-safe claude-hook`. For Codex, it installs one `^Bash$` `PreToolUse` hook in
+`~/.codex/hooks.json`. Both hook executables parse `tool_input.command`, apply the same fail-open
+safety classifier, and emit direct `updatedInput.command` rewrites only for known safe command
+shapes.
 
 ### The specific failure modes that drove the allowlist
 
-These are all open bugs in `rtk-ai/rtk` as of late April 2026:
+These are representative upstream bug classes that shape the default policy:
 
 - **`ls` is broken in many environments.** Empty output on macOS, on non-English locales, when
   `ls` is aliased to `eza`/`exa`/`lsd`, and with `-1`. (Issues #1418, #1475, #1448, #1342, #1321,
@@ -44,34 +44,30 @@ These are all open bugs in `rtk-ai/rtk` as of late April 2026:
 - **`curl` destroys JSON.** Issues #1152 (JSON value destruction) and #1015 (unquoted JSON keys)
   mean `curl` output gets returned as syntactically broken JSON. The rtk README itself
   recommends `[hooks] exclude_commands = ["curl"]`. **Hard-excluded.**
-- **`gh ... --comments` returns no comments.** `gh pr view --comments` and `gh issue view
-  --comments` use a hardcoded `--json` field list that omits comments entirely, so the agent
-  gets back `[]` and confidently reports "no comments" when there are dozens. (Issue #720.)
-  **The allowlist deliberately doesn't include `--comments` variants.**
+- **Machine-readable command output must stay raw.** JSON, jq/template output, git porcelain,
+  null-delimited output, raw diffs, and name-only/name-status data are intended for another
+  program. The classifier rejects those shapes before any allowlist rule can match.
 - **`gh pr status` is broken outright.** Fails with `Unknown JSON field: "currentBranch"`.
   (Issue #960.) **Excluded.**
-- **`npx <unknown-package>` fails with ENOENT.** rtk converts unknown `npx <pkg>` to
-  `npm run <pkg>`. (Issue #1080.) The allowlist only includes specific known-good prefixes
-  (`npx tsc`, `npx eslint`, `npx prisma`, `npx biome`, `npx prettier`, `npx vitest`,
-  `npx playwright codegen`).
+- **`npx <unknown-package>` has historically been fragile.** The classifier only includes
+  specific known-good `npx` tools and preserves the `npx` invocation by rewriting to
+  `rtk npx ...`.
 - **`git diff` for code review is lossy by design.** rtk's diff condenser drops content that
-  matters for review. (#1313 truncation class, #1486 piped corruption.) The allowlist scopes
-  `git diff` to `--name-only` and `--stat` only; bare `git diff` is **not** wrapped, so use
-  `rtk proxy git diff` or raw `git diff` for review.
+  matters for review. (#1313 truncation class, #1486 piped corruption.) The classifier allows
+  only `git diff --stat` and rejects `--name-only`, bare `git diff`, and machine-readable diff
+  forms.
 - **`playwright test` strips DOM/locator/call-log on failure.** (Issue #690 — the rtk README
   also recommends excluding it.) **Not in the allowlist.**
-- **`vitest run --coverage` silently drops coverage data.** (Issue #220.) Bare `vitest*` is
-  whitelisted, but coverage runs should go through `rtk proxy vitest run --coverage`.
+- **Watch/dev/server commands should not be captured.** Long-running commands can buffer or
+  suppress useful output through filtered routes. The classifier rejects watch flags and package
+  scripts such as `dev`, `start`, `serve`, `server`, `preview`, `storybook`, and `watch`.
 
-The allowlist itself — defined in `rtk_claude_safe/allowlist.py` — covers the commands where the
-rtk filter is actively dogfooded by the maintainer or has been stable across several minor
-releases:
-cargo (build/test/clippy/check/run/fmt --check/doc/install/nextest), the JS/TS test+lint+type
-toolchain (vitest, jest, pytest, tsc, eslint, biome, ruff, mypy, prettier --check, next build),
-pnpm/npm package management and runners, prisma generate/migrate/db push, the safe surface of git
-(status, log, add, commit, push/pull/fetch, stash, branch, checkout, switch, merge, rebase,
-cherry-pick, show, worktree, diff --name-only, diff --stat), the safe surface of gh (list/view
-subcommands, no `--comments`, no `pr status`), and a few small utilities (`tree`, `wc`, `env`).
+The rewrite policy itself — defined in `rtk_claude_safe/allowlist.py` — is a parsed-command
+classifier, not a raw wildcard list. It covers safe cargo/test/lint/typecheck/build commands,
+named npm/pnpm scripts, selected `npx` tools, selected Prisma commands (`generate`, `db push`, and
+`migrate dev`), tightly-scoped git orientation commands, safe gh list/view commands except
+comment-fetching modes, read-only pip inventory commands, and a few small utilities (`tree`, `wc`,
+`env`).
 
 ### What `rtk-claude-safe init` does
 
@@ -82,10 +78,11 @@ subcommands, no `--comments`, no `pr status`), and a few small utilities (`tree`
    release from `rtk-ai/rtk`, and extracts the binary to `~/.local/bin/rtk`. Skipped if `rtk` is
    already on `PATH`.
 3. **Patch Claude Code when present.** Runs `rtk init -g --hook-only`, finds every `PreToolUse`
-   entry whose matcher is `Bash`, removes existing RTK hooks, and adds the current scoped list once.
-   Those scoped hooks call `rtk-claude-safe claude-hook`, which rejects complex or uncertain shell
-   commands before delegating to `rtk hook claude`. Idempotent — running again is a no-op if the
-   scoped hooks are already current. Other user hooks under the same matcher are preserved.
+   entry whose matcher is `Bash`, removes existing RTK hooks, and adds the current scoped candidate
+   list once. Those scoped hooks call `rtk-claude-safe claude-hook`, which rejects complex or
+   uncertain shell commands and emits direct `updatedInput.command` rewrites. Idempotent — running
+   again is a no-op if the scoped hooks are already current. Other user hooks under the same matcher
+   are preserved.
 4. **Patch Codex when present.** Creates or updates `~/.codex/hooks.json` with one `^Bash$`
    `PreToolUse` command hook that calls `rtk-claude-safe codex-hook`. Other hook events, matcher
    groups, and user hooks are preserved.
@@ -94,7 +91,7 @@ subcommands, no `--comments`, no `pr status`), and a few small utilities (`tree`
 
 Codex support is experimental and scoped to the interactive Codex CLI on macOS, Linux, and WSL. It
 does not use or require upstream `rtk hook codex`; this package's own hook rewrites allowlisted
-simple Bash commands directly to `rtk <command>`.
+simple Bash commands directly to the classifier's RTK command.
 
 After `rtk-claude-safe init` patches Codex, open Codex CLI, run `/hooks`, review and trust the
 `rtk-claude-safe` hook, then ask Codex to run `git status`. The expected rewritten command is
@@ -134,8 +131,8 @@ These complement the scoped allowlist but live outside `~/.claude/settings.json`
 
 ```
 rtk_claude_safe/
-├── allowlist.py        # shared safe command patterns and match helpers
-├── claude_hook.py      # Claude wrapper that fail-opens before delegating to rtk
+├── allowlist.py        # shared safe command classifier and rewrite mapper
+├── claude_hook.py      # Claude stdin/stdout PreToolUse hook handler
 ├── claude_settings.py  # idempotent Claude settings.json patcher
 ├── cli.py             # argparse entry point
 ├── codex_hook.py      # Codex stdin/stdout PreToolUse hook handler
@@ -145,5 +142,5 @@ rtk_claude_safe/
 └── settings.py        # compatibility shim
 ```
 
-`allowlist.py` is the single place to edit if you want to tighten or loosen the allowlist for your
-stack.
+`allowlist.py` is the single place to edit if you want to tighten or loosen the rewrite policy for
+your stack.

@@ -3,13 +3,20 @@ from __future__ import annotations
 import io
 import json
 
-from rtk_claude_safe.codex_hook import main
+import pytest
+
+from rtk_claude_safe import codex_hook
+
+
+@pytest.fixture(autouse=True)
+def _rtk_available(monkeypatch) -> None:
+    monkeypatch.setattr(codex_hook.shutil, "which", lambda _name: "/bin/rtk")
 
 
 def _run_hook(payload: str | dict) -> tuple[int, str]:
     stdin = io.StringIO(payload if isinstance(payload, str) else json.dumps(payload))
     stdout = io.StringIO()
-    rc = main(stdin=stdin, stdout=stdout)
+    rc = codex_hook.main(stdin=stdin, stdout=stdout)
     return rc, stdout.getvalue()
 
 
@@ -23,6 +30,18 @@ def test_codex_hook_rewrites_allowlisted_bash_command() -> None:
             "permissionDecision": "allow",
             "updatedInput": {"command": "rtk git status"},
         }
+    }
+
+
+def test_codex_hook_uses_mapped_rewrite_command() -> None:
+    rc, output = _run_hook(
+        {"tool_name": "Bash", "tool_input": {"command": "eslint .", "description": "lint"}}
+    )
+
+    assert rc == 0
+    assert json.loads(output)["hookSpecificOutput"]["updatedInput"] == {
+        "command": "rtk lint .",
+        "description": "lint",
     }
 
 
@@ -56,8 +75,24 @@ def test_codex_hook_emits_nothing_for_complex_command() -> None:
     assert output == ""
 
 
+def test_codex_hook_emits_nothing_for_risky_subset() -> None:
+    rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "npm run dev"}})
+
+    assert rc == 0
+    assert output == ""
+
+
 def test_codex_hook_emits_nothing_for_already_wrapped_command() -> None:
     rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "rtk git status"}})
+
+    assert rc == 0
+    assert output == ""
+
+
+def test_codex_hook_emits_nothing_when_rtk_is_missing(monkeypatch) -> None:
+    monkeypatch.setattr(codex_hook.shutil, "which", lambda _name: None)
+
+    rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "git status"}})
 
     assert rc == 0
     assert output == ""

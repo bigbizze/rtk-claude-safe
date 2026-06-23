@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rtk-claude-safe"
-version = "0.2.0"
+version = "0.3.0"
 description = "Python wrapper for rtk (Rust Token Killer) that installs it cross-platform and configures Claude Code and Codex with scoped, safer PreToolUse hooks."
 readme = "README.md"
 requires-python = ">=3.9"
