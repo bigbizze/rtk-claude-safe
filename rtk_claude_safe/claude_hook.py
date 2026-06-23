@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from typing import Any, TextIO
 
@@ -36,6 +37,8 @@ def maybe_rewrite_payload(payload: Any) -> dict[str, Any] | None:
 
     rewrite = rewrite_command_for_agent(command, "claude")
     if rewrite is None:
+        return None
+    if shutil.which("rtk") is None:
         return None
     return build_rewrite_output(tool_input, rewrite)
 

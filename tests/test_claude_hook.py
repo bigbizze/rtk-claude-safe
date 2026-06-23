@@ -3,7 +3,14 @@ from __future__ import annotations
 import io
 import json
 
+import pytest
+
 from rtk_claude_safe import claude_hook
+
+
+@pytest.fixture(autouse=True)
+def _rtk_available(monkeypatch) -> None:
+    monkeypatch.setattr(claude_hook.shutil, "which", lambda _name: "/bin/rtk")
 
 
 def _payload(command: str, tool_name: str = "Bash", **extra_tool_input) -> str:
@@ -78,6 +85,15 @@ def test_claude_hook_fails_open_for_risky_subset() -> None:
 
     assert claude_hook.main(stdin=io.StringIO(_payload("npm run dev")), stdout=stdout) == 0
     assert stdout.getvalue() == ""
+
+
+def test_claude_hook_fails_open_when_rtk_is_missing(monkeypatch) -> None:
+    monkeypatch.setattr(claude_hook.shutil, "which", lambda _name: None)
+
+    rc, output = _run_hook("git status")
+
+    assert rc == 0
+    assert output == ""
 
 
 def test_claude_hook_fails_open_for_invalid_json() -> None:
