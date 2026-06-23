@@ -145,6 +145,56 @@ def test_codex_hooks_remove_stale_entries_from_duplicate_bash_groups(tmp_path) -
     assert commands == ["user-hook", "/new/rtk-claude-safe codex-hook"]
 
 
+@pytest.mark.parametrize(
+    "stale_command",
+    [
+        "rtk-claude-safe codex-hook",
+        "rtk-claude-safe.exe codex-hook",
+        "python -m rtk_claude_safe codex-hook",
+        "python3 -m rtk_claude_safe codex-hook",
+        "python3.11 -m rtk_claude_safe codex-hook",
+        '"/opt/Python Dir/python3" -m rtk_claude_safe codex-hook',
+        '"/opt/Safe Dir/rtk-claude-safe" codex-hook',
+    ],
+)
+def test_codex_hooks_remove_exact_managed_hook_variants(tmp_path, stale_command: str) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    hooks_path = codex_home / "hooks.json"
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": CODEX_BASH_MATCHER,
+                            "hooks": [
+                                {"type": "command", "command": stale_command},
+                                {"type": "command", "command": "echo rtk-claude-safe codex-hook"},
+                                {
+                                    "type": "command",
+                                    "command": "my-rtk-claude-safe-helper codex-hook",
+                                },
+                            ],
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert patch_codex_hooks(hooks_path, command="/new/rtk-claude-safe codex-hook")
+
+    commands = [
+        hook["command"] for hook in json.loads(hooks_path.read_text())["hooks"]["PreToolUse"][0]["hooks"]
+    ]
+    assert stale_command not in commands
+    assert "echo rtk-claude-safe codex-hook" in commands
+    assert "my-rtk-claude-safe-helper codex-hook" in commands
+    assert "/new/rtk-claude-safe codex-hook" in commands
+
+
 def test_codex_hooks_error_cleanly_on_malformed_json(tmp_path) -> None:
     codex_home = tmp_path / ".codex"
     codex_home.mkdir()

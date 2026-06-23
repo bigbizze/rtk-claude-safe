@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import subprocess
 import sys
 
 from rtk_claude_safe.hook_command import build_hook_command
@@ -38,4 +39,14 @@ def test_build_hook_command_uses_module_fallback_for_python_m(monkeypatch, tmp_p
     assert (
         build_hook_command("claude-hook")
         == f"{shlex.quote(str(python))} -m rtk_claude_safe claude-hook"
+    )
+
+
+def test_build_hook_command_quotes_windows_console_script(monkeypatch) -> None:
+    monkeypatch.setattr("rtk_claude_safe.hook_command.platform.system", lambda: "Windows")
+
+    script = r"C:\Program Files\rtk-claude-safe\rtk-claude-safe.exe"
+
+    assert build_hook_command("codex-hook", script=script) == subprocess.list2cmdline(
+        [script, "codex-hook"]
     )

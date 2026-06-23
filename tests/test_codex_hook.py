@@ -10,7 +10,7 @@ from rtk_claude_safe import codex_hook
 
 @pytest.fixture(autouse=True)
 def _rtk_available(monkeypatch) -> None:
-    monkeypatch.setattr(codex_hook.shutil, "which", lambda _name: "/bin/rtk")
+    monkeypatch.setattr(codex_hook, "runtime_rtk_supported", lambda: True)
 
 
 def _run_hook(payload: str | dict) -> tuple[int, str]:
@@ -52,6 +52,24 @@ def test_codex_hook_emits_nothing_for_non_allowlisted_command() -> None:
     assert output == ""
 
 
+def test_codex_hook_does_not_probe_rtk_for_fail_open_inputs(monkeypatch) -> None:
+    def fail() -> bool:
+        raise AssertionError("runtime probe should not be called")
+
+    monkeypatch.setattr(codex_hook, "runtime_rtk_supported", fail)
+
+    for payload in [
+        "{not json",
+        {"tool_name": "apply_patch", "tool_input": {"command": "git status"}},
+        {"tool_name": "Bash", "tool_input": {"command": "ls"}},
+        {"tool_name": "Bash", "tool_input": {"command": "git status && git diff --stat"}},
+        {"tool_name": "Bash", "tool_input": {"command": "rtk git status"}},
+    ]:
+        rc, output = _run_hook(payload)
+        assert rc == 0
+        assert output == ""
+
+
 def test_codex_hook_emits_nothing_for_non_bash_tool() -> None:
     rc, output = _run_hook({"tool_name": "apply_patch", "tool_input": {"command": "git status"}})
 
@@ -90,7 +108,7 @@ def test_codex_hook_emits_nothing_for_already_wrapped_command() -> None:
 
 
 def test_codex_hook_emits_nothing_when_rtk_is_missing(monkeypatch) -> None:
-    monkeypatch.setattr(codex_hook.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(codex_hook, "runtime_rtk_supported", lambda: False)
 
     rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "git status"}})
 

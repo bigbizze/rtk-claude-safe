@@ -9,6 +9,7 @@ from typing import Any
 
 from rtk_claude_safe.allowlist import build_claude_scoped_hooks
 from rtk_claude_safe.hook_command import build_hook_command
+from rtk_claude_safe.managed_hooks import is_managed_hook_command
 
 DEFAULT_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 RTK_COMMAND = "rtk hook claude"
@@ -40,13 +41,7 @@ def _is_rtk_hook(entry: Any) -> bool:
     command = entry.get("command")
     if not isinstance(command, str):
         return False
-    return (
-        command == RTK_COMMAND
-        or (
-            "claude-hook" in command
-            and ("rtk-claude-safe" in command or "rtk_claude_safe" in command)
-        )
-    )
+    return is_managed_hook_command(command, "claude")
 
 
 def _remove_rtk_hooks_from_bash_matcher(matcher_entry: dict[str, Any], path: Path) -> None:

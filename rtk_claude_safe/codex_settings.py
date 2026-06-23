@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from rtk_claude_safe.hook_command import build_hook_command
+from rtk_claude_safe.managed_hooks import is_managed_hook_command
 
 DEFAULT_CODEX_HOME = Path.home() / ".codex"
 DEFAULT_CODEX_HOOKS_PATH = DEFAULT_CODEX_HOME / "hooks.json"
@@ -57,9 +58,7 @@ def _is_rtk_codex_hook(entry: Any) -> bool:
     command = entry.get("command")
     if not isinstance(command, str):
         return False
-    return "codex-hook" in command and (
-        "rtk-claude-safe" in command or "rtk_claude_safe" in command
-    )
+    return is_managed_hook_command(command, "codex")
 
 
 def _remove_rtk_hooks_from_bash_group(group: dict[str, Any], path: Path) -> None:

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 import platform
-import subprocess
 import sys
+import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from rtk_claude_safe import __version__
@@ -22,8 +23,68 @@ from rtk_claude_safe.installer import (
     DEFAULT_INSTALL_DIR,
     InstallError,
     ensure_rtk,
-    run_rtk_init,
 )
+
+
+@dataclass
+class _FileSnapshot:
+    path: Path
+    existed: bool
+    data: bytes | None
+    mode: int | None
+    missing_parents: list[Path]
+
+
+class _ConfigTransaction:
+    def __init__(self) -> None:
+        self._snapshots: dict[Path, _FileSnapshot] = {}
+
+    def snapshot(self, path: Path) -> None:
+        path = path.expanduser()
+        if path in self._snapshots:
+            return
+        missing_parents: list[Path] = []
+        parent = path.parent
+        while not parent.exists():
+            missing_parents.append(parent)
+            parent = parent.parent
+        if path.exists():
+            stat_result = path.stat()
+            snapshot = _FileSnapshot(
+                path=path,
+                existed=True,
+                data=path.read_bytes(),
+                mode=stat_result.st_mode,
+                missing_parents=missing_parents,
+            )
+        else:
+            snapshot = _FileSnapshot(
+                path=path,
+                existed=False,
+                data=None,
+                mode=None,
+                missing_parents=missing_parents,
+            )
+        self._snapshots[path] = snapshot
+
+    def rollback(self) -> None:
+        for snapshot in reversed(list(self._snapshots.values())):
+            if snapshot.existed:
+                snapshot.path.parent.mkdir(parents=True, exist_ok=True)
+                snapshot.path.write_bytes(snapshot.data or b"")
+                if snapshot.mode is not None:
+                    os.chmod(snapshot.path, snapshot.mode)
+            else:
+                try:
+                    if snapshot.path.exists():
+                        snapshot.path.unlink()
+                except IsADirectoryError:
+                    pass
+            for parent in snapshot.missing_parents:
+                try:
+                    parent.rmdir()
+                except OSError:
+                    pass
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
@@ -49,54 +110,55 @@ def _cmd_init(args: argparse.Namespace) -> int:
         return 0
 
     try:
-        rtk_path = ensure_rtk(install_dir)
+        ensure_rtk(install_dir)
     except InstallError as e:
         print(f"[rtk-claude-safe] failed to install rtk: {e}", file=sys.stderr)
         return 1
 
+    tx = _ConfigTransaction()
     if claude_requested:
-        try:
-            run_rtk_init(rtk_path)
-        except subprocess.CalledProcessError as e:
-            print(f"[rtk-claude-safe] `rtk init` exited with status {e.returncode}", file=sys.stderr)
-            return e.returncode
-
-        try:
-            changed = patch_settings(settings_path)
-        except ValueError as e:
-            print(f"[rtk-claude-safe] failed to patch Claude settings: {e}", file=sys.stderr)
-            return 1
-
-        if changed:
-            print(f"[rtk-claude-safe] patched scoped Claude hooks into {settings_path}")
-        else:
-            print(f"[rtk-claude-safe] {settings_path} already has scoped Claude hooks")
-    else:
-        print("[rtk-claude-safe] skipped Claude; ~/.claude was not found")
-
+        tx.snapshot(settings_path)
     if codex_requested:
-        try:
-            codex_changed = patch_codex_hooks(DEFAULT_CODEX_HOOKS_PATH)
-        except ValueError as e:
-            print(f"[rtk-claude-safe] failed to patch Codex hooks: {e}", file=sys.stderr)
-            return 1
+        tx.snapshot(DEFAULT_CODEX_HOOKS_PATH)
 
-        if codex_changed:
-            print(f"[rtk-claude-safe] patched Codex hook into {DEFAULT_CODEX_HOOKS_PATH}")
+    messages: list[str] = []
+    try:
+        if claude_requested:
+            changed = patch_settings(settings_path)
+            if changed:
+                messages.append(f"[rtk-claude-safe] patched scoped Claude hooks into {settings_path}")
+            else:
+                messages.append(f"[rtk-claude-safe] {settings_path} already has scoped Claude hooks")
         else:
-            print(f"[rtk-claude-safe] {DEFAULT_CODEX_HOOKS_PATH} already has the Codex hook")
+            messages.append("[rtk-claude-safe] skipped Claude; ~/.claude was not found")
 
-        for warning in inspect_codex_config(DEFAULT_CODEX_CONFIG_PATH):
+        if codex_requested:
+            codex_changed = patch_codex_hooks(DEFAULT_CODEX_HOOKS_PATH)
+            if codex_changed:
+                messages.append(f"[rtk-claude-safe] patched Codex hook into {DEFAULT_CODEX_HOOKS_PATH}")
+            else:
+                messages.append(f"[rtk-claude-safe] {DEFAULT_CODEX_HOOKS_PATH} already has the Codex hook")
+
+            warnings = inspect_codex_config(DEFAULT_CODEX_CONFIG_PATH)
+
+            messages.append(
+                "[rtk-claude-safe] Open Codex CLI, run /hooks, review and trust the "
+                "rtk-claude-safe hook."
+            )
+            messages.append("[rtk-claude-safe] Then ask Codex to run: git status")
+            messages.append("[rtk-claude-safe] Expected rewritten command: rtk git status")
+        else:
+            messages.append("[rtk-claude-safe] skipped Codex; ~/.codex was not found")
+    except (ValueError, OSError, UnicodeError) as e:
+        tx.rollback()
+        print(f"[rtk-claude-safe] failed to patch agent hooks: {e}", file=sys.stderr)
+        return 1
+
+    for message in messages:
+        print(message)
+    if codex_requested:
+        for warning in warnings:
             print(f"[rtk-claude-safe] warning: {warning}", file=sys.stderr)
-
-        print(
-            "[rtk-claude-safe] Open Codex CLI, run /hooks, review and trust the "
-            "rtk-claude-safe hook."
-        )
-        print("[rtk-claude-safe] Then ask Codex to run: git status")
-        print("[rtk-claude-safe] Expected rewritten command: rtk git status")
-    else:
-        print("[rtk-claude-safe] skipped Codex; ~/.codex was not found")
 
     return 0
 
