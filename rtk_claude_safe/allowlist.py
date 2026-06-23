@@ -492,9 +492,12 @@ def _rewrite_gh(parts: list[str]) -> str | None:
     if len(parts) < 3:
         return None
     area, action = parts[1], parts[2]
-    if _has_gh_web_flag(parts[3:]):
+    gh_args = parts[3:]
+    if _has_gh_machine_output_shorthand(gh_args):
         return None
-    if area in {"pr", "issue"} and action == "view" and _has_gh_comments_flag(parts[3:]):
+    if _has_gh_web_flag(gh_args):
+        return None
+    if area in {"pr", "issue"} and action == "view" and _has_gh_comments_flag(gh_args):
         return None
     if area == "pr" and action in {"list", "view"}:
         return _rtk_prefix(parts)
@@ -511,13 +514,23 @@ def _rewrite_gh(parts: list[str]) -> str | None:
 
 def _has_gh_comments_flag(args: list[str]) -> bool:
     return any(
-        arg == "-c" or arg.startswith("-c=") or arg == "--comments" or arg.startswith("--comments=")
+        _has_short_flag(arg, "c") or arg == "--comments" or arg.startswith("--comments=")
         for arg in args
     )
 
 
 def _has_gh_web_flag(args: list[str]) -> bool:
-    return any(arg == "-w" or arg.startswith("-w=") or arg == "--web" or arg.startswith("--web=") for arg in args)
+    return any(_has_short_flag(arg, "w") or arg == "--web" or arg.startswith("--web=") for arg in args)
+
+
+def _has_gh_machine_output_shorthand(args: list[str]) -> bool:
+    return any(_has_short_flag(arg, "q") or _has_short_flag(arg, "t") for arg in args)
+
+
+def _has_short_flag(arg: str, flag: str) -> bool:
+    if not arg.startswith("-") or arg.startswith("--") or len(arg) < 2:
+        return False
+    return flag in arg[1:].split("=", 1)[0]
 
 
 def _rewrite_prisma(parts: list[str]) -> str | None:
