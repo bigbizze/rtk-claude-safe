@@ -26,6 +26,13 @@ def test_codex_hook_rewrites_allowlisted_bash_command() -> None:
     }
 
 
+def test_codex_hook_uses_mapped_rewrite_command() -> None:
+    rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "eslint ."}})
+
+    assert rc == 0
+    assert json.loads(output)["hookSpecificOutput"]["updatedInput"] == {"command": "rtk lint ."}
+
+
 def test_codex_hook_emits_nothing_for_non_allowlisted_command() -> None:
     rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "ls"}})
 
@@ -51,6 +58,13 @@ def test_codex_hook_emits_nothing_for_complex_command() -> None:
     rc, output = _run_hook(
         {"tool_name": "Bash", "tool_input": {"command": "git status && git diff --stat"}}
     )
+
+    assert rc == 0
+    assert output == ""
+
+
+def test_codex_hook_emits_nothing_for_risky_subset() -> None:
+    rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "npm run dev"}})
 
     assert rc == 0
     assert output == ""
