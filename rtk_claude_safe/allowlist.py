@@ -492,6 +492,8 @@ def _rewrite_gh(parts: list[str]) -> str | None:
     if len(parts) < 3:
         return None
     area, action = parts[1], parts[2]
+    if _has_gh_web_flag(parts[3:]):
+        return None
     if area in {"pr", "issue"} and action == "view" and _has_gh_comments_flag(parts[3:]):
         return None
     if area == "pr" and action in {"list", "view"}:
@@ -508,7 +510,14 @@ def _rewrite_gh(parts: list[str]) -> str | None:
 
 
 def _has_gh_comments_flag(args: list[str]) -> bool:
-    return any(arg == "-c" or arg == "--comments" or arg.startswith("--comments=") for arg in args)
+    return any(
+        arg == "-c" or arg.startswith("-c=") or arg == "--comments" or arg.startswith("--comments=")
+        for arg in args
+    )
+
+
+def _has_gh_web_flag(args: list[str]) -> bool:
+    return any(arg == "-w" or arg.startswith("-w=") or arg == "--web" or arg.startswith("--web=") for arg in args)
 
 
 def _rewrite_prisma(parts: list[str]) -> str | None:
