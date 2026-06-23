@@ -17,6 +17,8 @@ def build_rewrite_output(tool_input: dict[str, Any], command: str) -> dict[str, 
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": "RTK safe rewrite",
             "updatedInput": updated_input,
         }
     }

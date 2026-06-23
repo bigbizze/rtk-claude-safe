@@ -30,16 +30,19 @@ def test_claude_hook_rewrites_allowlisted_simple_command() -> None:
     assert json.loads(output) == {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": "RTK safe rewrite",
             "updatedInput": {"command": "rtk git status"},
         }
     }
 
 
-def test_claude_hook_does_not_auto_allow_rewritten_commands() -> None:
+def test_claude_hook_asks_instead_of_auto_allowing_rewritten_commands() -> None:
     rc, output = _run_hook("git status")
 
     assert rc == 0
-    assert "permissionDecision" not in json.loads(output)["hookSpecificOutput"]
+    hook_output = json.loads(output)["hookSpecificOutput"]
+    assert hook_output["permissionDecision"] == "ask"
 
 
 def test_claude_hook_uses_mapped_rewrite_command_and_preserves_extra_input() -> None:
