@@ -89,3 +89,13 @@ def test_cli_explicit_settings_targets_claude(monkeypatch, tmp_path) -> None:
 
     assert [name for name, _value in calls] == ["ensure", "rtk-init", "claude"]
     assert calls[-1] == ("claude", explicit_settings)
+
+
+def test_codex_hook_is_hidden_from_help() -> None:
+    assert "codex-hook" not in cli.build_parser().format_help()
+
+
+def test_hidden_codex_hook_subcommand_dispatches(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "codex_hook_main", lambda: 0)
+
+    assert cli.main(["codex-hook"]) == 0

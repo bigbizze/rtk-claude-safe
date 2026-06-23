@@ -122,12 +122,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init.set_defaults(func=_cmd_init)
 
-    codex_hook = sub.add_parser("codex-hook", help=argparse.SUPPRESS)
-    codex_hook.set_defaults(func=_cmd_codex_hook)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "codex-hook":
+        return _cmd_codex_hook(argparse.Namespace())
+
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
