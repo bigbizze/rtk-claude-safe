@@ -150,9 +150,11 @@ def test_codex_hooks_remove_stale_entries_from_duplicate_bash_groups(tmp_path) -
     [
         "rtk-claude-safe codex-hook",
         "rtk-claude-safe.exe codex-hook",
+        r"C:\Tools\rtk-claude-safe.exe codex-hook",
         "python -m rtk_claude_safe codex-hook",
         "python3 -m rtk_claude_safe codex-hook",
         "python3.11 -m rtk_claude_safe codex-hook",
+        r"C:\Python312\python.exe -m rtk_claude_safe codex-hook",
         '"/opt/Python Dir/python3" -m rtk_claude_safe codex-hook',
         '"/opt/Safe Dir/rtk-claude-safe" codex-hook',
     ],

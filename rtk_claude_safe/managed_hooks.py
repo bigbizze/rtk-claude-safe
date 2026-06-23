@@ -7,7 +7,6 @@ import ntpath
 import posixpath
 import re
 import shlex
-from dataclasses import dataclass
 from typing import Literal
 
 ManagedHook = Literal["claude", "codex"]
@@ -16,25 +15,27 @@ _ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _PYTHON_RE = re.compile(r"^python(?:\d+(?:\.\d+)?)?(?:\.exe)?$", re.IGNORECASE)
 
 
-@dataclass(frozen=True)
-class CommandTokens:
-    tokens: list[str]
-
-
 def is_managed_hook_command(command: str, hook: ManagedHook) -> bool:
     """Return True only for exact commands managed by this package."""
-    tokens = _split_command(command)
-    if not tokens:
-        return False
-    return _is_safe_wrapper(tokens, hook) or (hook == "claude" and _is_rtk_claude_hook(tokens))
+    for tokens in _split_command_variants(command):
+        if _is_safe_wrapper(tokens, hook) or (hook == "claude" and _is_rtk_claude_hook(tokens)):
+            return True
+    return False
 
 
-def _split_command(command: str) -> list[str] | None:
-    try:
-        tokens = shlex.split(command, posix=True)
-    except ValueError:
-        return None
-    return tokens
+def _split_command_variants(command: str) -> list[list[str]]:
+    variants: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for posix in (True, False):
+        try:
+            tokens = shlex.split(command, posix=posix)
+        except ValueError:
+            continue
+        key = tuple(tokens)
+        if tokens and key not in seen:
+            variants.append(tokens)
+            seen.add(key)
+    return variants
 
 
 def _basename(value: str) -> str:

@@ -173,8 +173,10 @@ def test_claude_settings_remove_stale_safe_wrapper_paths(tmp_path) -> None:
         "env FOO=bar rtk hook claude",
         "rtk-claude-safe claude-hook",
         "rtk-claude-safe.exe claude-hook",
+        r"C:\Tools\rtk-claude-safe.exe claude-hook",
         "python -m rtk_claude_safe claude-hook",
         "python3.11 -m rtk_claude_safe claude-hook",
+        r"C:\Python312\python.exe -m rtk_claude_safe claude-hook",
         '"/opt/Python Dir/python3" -m rtk_claude_safe claude-hook',
     ],
 )
