@@ -25,7 +25,7 @@ rtk-claude-safe = "rtk_claude_safe.cli:main"
 dev = ["pytest>=8"]
 
 [project.urls]
-"Source" = "https://github.com/rtk-ai/rtk"
+"Source" = "https://github.com/bigbizze/rtk-claude-safe"
 
 [tool.setuptools.packages.find]
 include = ["rtk_claude_safe*"]

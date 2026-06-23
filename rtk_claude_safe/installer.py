@@ -136,7 +136,7 @@ def ensure_rtk(install_dir: Path = DEFAULT_INSTALL_DIR) -> Path:
     if str(install_dir) not in os.environ.get("PATH", "").split(os.pathsep):
         print(
             f"[rtk-claude-safe] note: {install_dir} is not on PATH; add it so the "
-            f"`rtk hook claude` hooks can resolve at runtime.",
+            f"`rtk hook claude` hooks and Codex `rtk <command>` rewrites can resolve at runtime.",
             file=sys.stderr,
         )
     return dest
