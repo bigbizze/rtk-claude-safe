@@ -64,9 +64,10 @@ These are representative upstream bug classes that shape the default policy:
 
 The rewrite policy itself — defined in `rtk_claude_safe/allowlist.py` — is a parsed-command
 classifier, not a raw wildcard list. It covers safe cargo/test/lint/typecheck/build commands,
-named npm/pnpm scripts, selected `npx` tools, prisma generate/migrate/db push, tightly-scoped git
-orientation commands, safe gh list/view commands, read-only pip inventory commands, and a few small
-utilities (`tree`, `wc`, `env`).
+named npm/pnpm scripts, selected `npx` tools, selected Prisma commands (`generate`, `db push`, and
+`migrate dev`), tightly-scoped git orientation commands, safe gh list/view commands except
+comment-fetching modes, read-only pip inventory commands, and a few small utilities (`tree`, `wc`,
+`env`).
 
 ### What `rtk-claude-safe init` does
 

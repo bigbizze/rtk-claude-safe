@@ -485,6 +485,8 @@ def _rewrite_gh(parts: list[str]) -> str | None:
     if len(parts) < 3:
         return None
     area, action = parts[1], parts[2]
+    if area in {"pr", "issue"} and action == "view" and "--comments" in parts[3:]:
+        return None
     if area == "pr" and action in {"list", "view"}:
         return _rtk_prefix(parts)
     if area == "issue" and action in {"list", "view"}:
@@ -508,8 +510,6 @@ def _safe_prisma_args(args: list[str]) -> bool:
     if args[0] == "generate":
         return True
     if len(args) >= 2 and args[:2] in (["db", "push"], ["migrate", "dev"]):
-        return True
-    if args[0] == "migrate":
         return True
     return False
 
