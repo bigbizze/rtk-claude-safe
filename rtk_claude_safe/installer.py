@@ -115,11 +115,31 @@ def find_rtk() -> Optional[Path]:
     return Path(found) if found else None
 
 
+def _rtk_binary_name() -> str:
+    return "rtk.exe" if platform.system() == "Windows" else "rtk"
+
+
+def _warn_if_not_on_path(install_dir: Path) -> None:
+    if str(install_dir) in os.environ.get("PATH", "").split(os.pathsep):
+        return
+    print(
+        f"[rtk-claude-safe] note: {install_dir} is not on PATH; add it so the "
+        f"`rtk hook claude` hooks and Codex `rtk <command>` rewrites can resolve at runtime.",
+        file=sys.stderr,
+    )
+
+
 def ensure_rtk(install_dir: Path = DEFAULT_INSTALL_DIR) -> Path:
     """Make sure an `rtk` binary is available; download one if not. Return its path."""
     existing = find_rtk()
     if existing:
         return existing
+
+    binary_name = _rtk_binary_name()
+    installed = install_dir / binary_name
+    if installed.is_file():
+        _warn_if_not_on_path(install_dir)
+        return installed
 
     target, ext = _detect_target()
     version = _latest_version()
@@ -128,17 +148,11 @@ def ensure_rtk(install_dir: Path = DEFAULT_INSTALL_DIR) -> Path:
     print(f"[rtk-claude-safe] downloading {url}", file=sys.stderr)
 
     archive_bytes = _download(url)
-    binary_name = "rtk.exe" if platform.system() == "Windows" else "rtk"
     dest = install_dir / binary_name
     _extract_rtk_binary(archive_bytes, ext, dest)
 
     print(f"[rtk-claude-safe] installed rtk {version} -> {dest}", file=sys.stderr)
-    if str(install_dir) not in os.environ.get("PATH", "").split(os.pathsep):
-        print(
-            f"[rtk-claude-safe] note: {install_dir} is not on PATH; add it so the "
-            f"`rtk hook claude` hooks can resolve at runtime.",
-            file=sys.stderr,
-        )
+    _warn_if_not_on_path(install_dir)
     return dest
 
 
