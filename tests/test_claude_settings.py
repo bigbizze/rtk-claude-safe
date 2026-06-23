@@ -105,6 +105,31 @@ def test_claude_settings_reconcile_stale_scoped_hooks(tmp_path) -> None:
     assert hooks[1:] == build_claude_scoped_hooks(SAFE_CLAUDE_COMMAND)
 
 
+def test_claude_settings_replace_previous_version_scoped_hooks(tmp_path) -> None:
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "Bash",
+                            "hooks": build_claude_scoped_hooks(RTK_COMMAND),
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
+    assert not patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
+
+    hooks = _read(settings_path)["hooks"]["PreToolUse"][0]["hooks"]
+    assert hooks == build_claude_scoped_hooks(SAFE_CLAUDE_COMMAND)
+
+
 def test_claude_settings_remove_stale_safe_wrapper_paths(tmp_path) -> None:
     settings_path = tmp_path / "settings.json"
     settings_path.write_text(

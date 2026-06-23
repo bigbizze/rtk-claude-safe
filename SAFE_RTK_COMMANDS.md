@@ -1,5 +1,10 @@
 # rtk PreToolUse Whitelist Audit (rtk-ai/rtk, current master ~v0.37.x / dev-0.38)
 
+> Historical research note: this file is an audit snapshot, not current installation guidance.
+> Do not copy the hook snippets below into Claude settings. The current installer generates hooks
+> from `rtk_claude_safe/allowlist.py` and routes Claude through `rtk-claude-safe claude-hook`,
+> which applies additional fail-open checks before delegating to `rtk hook claude`.
+
 This audit was done against `rtk-ai/rtk` master at the end of April 2026 (latest stable v0.37.1, pre-release `dev-0.38.0-rc.176` cut 26 Apr 2026), plus the open issue tracker (368 open bugs at audit time, 161 explicitly tagged `filter-quality`), the `CHANGELOG.md`, the `CLAUDE.md`/`CONTRIBUTING.md` design-philosophy docs, and the `src/cmds/` ecosystem layout. The goal was to expand your 19-entry conservative whitelist to the full set of subcommands that are actually safe under a `rtk hook claude` PreToolUse, given your TS/React/Node + Postgres + Rust + Python stack and your hard requirement that filters never silently drop semantically important information.
 
 ## 1. Methodology, in one paragraph
@@ -140,6 +145,9 @@ Classification key:
 | `rewrite <cmd>` | SAFE | the registry oracle | useful for debugging your own whitelist (`rtk rewrite "git diff -- foo.ts"` shows you what would actually run). |
 
 ## 3. Drop-in additions to `~/.claude/settings.json`
+
+> Historical example only. Do not paste this block into current settings. Run
+> `rtk-claude-safe init` so the current safe wrapper command and allowlist are generated.
 
 Append the following entries to your existing 19-entry `PreToolUse[*]` array. Each is one line, with a single-line justification next to it. I've grouped them by ecosystem and ordered them by how much value they're likely to add for *your* stack first.
 
