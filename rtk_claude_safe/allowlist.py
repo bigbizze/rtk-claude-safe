@@ -107,11 +107,26 @@ _MACHINE_OUTPUT_FLAGS = {
     "--jq",
     "--template",
     "--format",
+    "--name-only",
     "--raw",
     "--numstat",
     "--name-status",
+    "--output",
+    "--outputFile",
+    "--output-file",
+    "--parseable",
     "-z",
     "--null",
+}
+_INLINE_MACHINE_OUTPUT_FLAGS = {
+    "--json",
+    "--jq",
+    "--template",
+    "--format",
+    "--porcelain",
+    "--output",
+    "--outputFile",
+    "--output-file",
 }
 _WATCH_FLAGS = {"-w", "--watch", "--watch-all", "--watchAll"}
 _SERVER_SCRIPT_WORDS = {"dev", "start", "serve", "server", "preview", "storybook", "watch"}
@@ -181,10 +196,20 @@ def _has_common_deny(parts: list[str]) -> bool:
 
 
 def _has_machine_output_flag(parts: list[str]) -> bool:
-    for part in parts[1:]:
+    for index, part in enumerate(parts[1:], start=1):
         if part in _MACHINE_OUTPUT_FLAGS:
             return True
-        if part.startswith("--format=") or part.startswith("--porcelain"):
+        if "=" in part:
+            flag, value = part.split("=", 1)
+            if flag in _INLINE_MACHINE_OUTPUT_FLAGS:
+                return True
+            if flag == "--reporter" and value.startswith("json"):
+                return True
+        if part.startswith("--porcelain") or part.startswith("--json-report"):
+            return True
+        if part.startswith("--coverage"):
+            return True
+        if part == "--reporter" and index + 1 < len(parts) and parts[index + 1].startswith("json"):
             return True
     return False
 
@@ -217,6 +242,8 @@ def _rewrite_parts(parts: list[str], agent: Agent) -> str | None:
     if command == "biome":
         return None
     if command in {"vitest", "jest", "pytest", "tsc", "mypy"}:
+        if _has_test_runner_deny(parts):
+            return None
         return _rtk_prefix(parts)
     if command == "go" and len(parts) > 1 and parts[1] == "test":
         return None if any(p.startswith("-bench") for p in parts[2:]) else _rtk_prefix(parts)
@@ -269,8 +296,15 @@ def _rewrite_git(parts: list[str]) -> str | None:
     if subcommand == "worktree":
         return _rtk_prefix(parts) if args == ["list"] else None
     if subcommand == "diff":
-        return _rtk_prefix(parts) if args and args[0] == "--stat" else None
+        return _rtk_prefix(parts) if _safe_git_diff_args(args) else None
     return None
+
+
+def _safe_git_diff_args(args: list[str]) -> bool:
+    if not args or args[0] != "--stat":
+        return False
+    denied = {"--name-only", "--name-status", "--numstat", "--raw", "--patch", "-p"}
+    return not any(arg in denied for arg in args)
 
 
 def _safe_git_log_args(args: list[str]) -> bool:
@@ -317,6 +351,21 @@ def _is_small_positive_int(value: str, limit: int = 50) -> bool:
     except ValueError:
         return False
     return 1 <= parsed <= limit
+
+
+def _has_test_runner_deny(parts: list[str]) -> bool:
+    for index, part in enumerate(parts[1:], start=1):
+        if part.startswith("--coverage") or part.startswith("--json-report"):
+            return True
+        if part in {"--outputFile", "--output-file"}:
+            return True
+        if part.startswith("--outputFile=") or part.startswith("--output-file="):
+            return True
+        if part == "--reporter" and index + 1 < len(parts) and parts[index + 1].startswith("json"):
+            return True
+        if part.startswith("--reporter=json"):
+            return True
+    return False
 
 
 def _rewrite_package_manager(parts: list[str]) -> str | None:
