@@ -146,7 +146,9 @@ _MACHINE_FORMAT_VALUES = {
     "tap",
 }
 _MACHINE_REPORT_PREFIXES = (
+    "--junit-xml",
     "--junitxml",
+    "--cov-report",
     "--json-report",
     "--json-report-file",
     "--xml-report",
@@ -231,7 +233,13 @@ def _has_machine_output_flag(parts: list[str]) -> bool:
             flag, value = part.split("=", 1)
             if flag in _INLINE_MACHINE_OUTPUT_FLAGS:
                 return True
+            if flag == "-json":
+                return True
+            if flag in _MACHINE_FORMAT_VALUE_FLAGS and value in _MACHINE_FORMAT_VALUES:
+                return True
             if flag == "--reporter" and value.startswith("json"):
+                return True
+            if flag.startswith(_MACHINE_REPORT_PREFIXES):
                 return True
         if part.startswith("--porcelain") or part.startswith("--json-report"):
             return True
@@ -337,8 +345,20 @@ def _rewrite_git(parts: list[str]) -> str | None:
 def _safe_git_diff_args(args: list[str]) -> bool:
     if not args or args[0] != "--stat":
         return False
-    denied = {"--name-only", "--name-status", "--numstat", "--raw", "--patch", "-p"}
-    return not any(arg in denied for arg in args)
+    denied = {
+        "--name-only",
+        "--name-status",
+        "--numstat",
+        "--raw",
+        "--patch",
+        "--patch-with-stat",
+        "--patch-with-raw",
+        "--binary",
+        "--full-index",
+        "-p",
+    }
+    denied_prefixes = ("--patch", "--raw", "--name-", "--numstat", "--binary", "--full-index")
+    return not any(arg in denied or arg.startswith(denied_prefixes) for arg in args)
 
 
 def _safe_git_log_args(args: list[str]) -> bool:
