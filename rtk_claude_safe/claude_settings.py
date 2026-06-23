@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import copy
 import json
-import shlex
-import shutil
-import sys
 from pathlib import Path
 from typing import Any
 
 from rtk_claude_safe.allowlist import build_claude_scoped_hooks
+from rtk_claude_safe.hook_command import build_hook_command
 
 DEFAULT_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 RTK_COMMAND = "rtk hook claude"
@@ -18,10 +16,7 @@ RTK_COMMAND = "rtk hook claude"
 
 def build_claude_hook_command(script: str | None = None) -> str:
     """Return the stable command Claude should run for the safe wrapper hook."""
-    script = script or shutil.which("rtk-claude-safe")
-    if script:
-        return f"{shlex.quote(str(Path(script).resolve()))} claude-hook"
-    return f"{shlex.quote(sys.executable)} -m rtk_claude_safe claude-hook"
+    return build_hook_command("claude-hook", script)
 
 
 def _load(path: Path) -> dict[str, Any]:

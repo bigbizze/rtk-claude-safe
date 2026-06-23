@@ -5,11 +5,10 @@ from __future__ import annotations
 import copy
 import json
 import re
-import shlex
-import shutil
-import sys
 from pathlib import Path
 from typing import Any
+
+from rtk_claude_safe.hook_command import build_hook_command
 
 DEFAULT_CODEX_HOME = Path.home() / ".codex"
 DEFAULT_CODEX_HOOKS_PATH = DEFAULT_CODEX_HOME / "hooks.json"
@@ -22,10 +21,7 @@ CODEX_HOOK_STATUS_MESSAGE = "RTK safe rewrite"
 
 def build_codex_hook_command(script: str | None = None) -> str:
     """Return the stable command Codex should run for the hook."""
-    script = script or shutil.which("rtk-claude-safe")
-    if script:
-        return f"{shlex.quote(str(Path(script).resolve()))} codex-hook"
-    return f"{shlex.quote(sys.executable)} -m rtk_claude_safe codex-hook"
+    return build_hook_command("codex-hook", script)
 
 
 def build_codex_hook_entry(command: str | None = None) -> dict[str, Any]:
