@@ -45,6 +45,10 @@ CANDIDATE_PATTERNS: list[str] = [
     "pnpm test*",
     "pnpm lint*",
     "pnpm build*",
+    "pnpm typecheck*",
+    "pnpm check*",
+    "pnpm boundaries*",
+    "pnpm --filter *",
     "pnpm list*",
     "pnpm outdated*",
     "pnpm exec tsc*",
@@ -78,6 +82,13 @@ CANDIDATE_PATTERNS: list[str] = [
     "git stash list*",
     "git worktree list*",
     "git diff --stat*",
+    "git diff --check*",
+    "git diff --cached --stat*",
+    "git diff --stat --cached*",
+    "git rev-parse HEAD*",
+    "git branch --show-current*",
+    "git branch -vv*",
+    "git branch --list*",
     # gh
     "gh pr list*",
     "gh pr view*",
@@ -174,6 +185,9 @@ _MACHINE_REPORT_PREFIXES = (
 _WATCH_FLAGS = {"-w", "--watch", "--watch-all", "--watchAll"}
 _SERVER_SCRIPT_WORDS = {"dev", "start", "serve", "server", "preview", "storybook", "watch"}
 _SAFE_SCRIPT_ROOTS = {"test", "lint", "build", "typecheck", "check", "format:check"}
+_SAFE_PNPM_DIRECT_SCRIPTS = {"test", "lint", "build", "typecheck", "boundaries"}
+_SAFE_PNPM_FILTERED_SCRIPTS = {"typecheck", "test", "build"}
+_PACKAGE_NAME_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
 @dataclass(frozen=True)
@@ -666,7 +680,11 @@ def _rewrite_git(parts: list[str]) -> str | None:
     subcommand = parts[1]
     args = parts[2:]
     if subcommand == "status":
-        return _rtk_prefix(parts) if args in ([], ["--short"], ["-s"]) else None
+        return _rtk_prefix(parts) if _safe_git_status_args(args) else None
+    if subcommand == "rev-parse":
+        return _rtk_prefix(parts) if args == ["HEAD"] else None
+    if subcommand == "branch":
+        return _rtk_prefix(parts) if _safe_git_branch_args(args) else None
     if subcommand == "log":
         return _rtk_prefix(parts) if _safe_git_log_args(args) else None
     if subcommand == "stash":
@@ -678,23 +696,28 @@ def _rewrite_git(parts: list[str]) -> str | None:
     return None
 
 
+def _safe_git_status_args(args: list[str]) -> bool:
+    return args in (
+        [],
+        ["--short"],
+        ["-s"],
+        ["--short", "--branch"],
+        ["--branch", "--short"],
+        ["-sb"],
+    )
+
+
+def _safe_git_branch_args(args: list[str]) -> bool:
+    return args in (["--show-current"], ["-vv"], ["--list"])
+
+
 def _safe_git_diff_args(args: list[str]) -> bool:
-    if not args or args[0] != "--stat":
-        return False
-    denied = {
-        "--name-only",
-        "--name-status",
-        "--numstat",
-        "--raw",
-        "--patch",
-        "--patch-with-stat",
-        "--patch-with-raw",
-        "--binary",
-        "--full-index",
-        "-p",
-    }
-    denied_prefixes = ("--patch", "--raw", "--name-", "--numstat", "--binary", "--full-index")
-    return not any(arg in denied or arg.startswith(denied_prefixes) for arg in args)
+    return args in (
+        ["--stat"],
+        ["--cached", "--stat"],
+        ["--stat", "--cached"],
+        ["--check"],
+    )
 
 
 def _safe_git_log_args(args: list[str]) -> bool:
@@ -760,6 +783,7 @@ def _has_test_runner_deny(parts: list[str]) -> bool:
 
 def _rewrite_package_manager(parts: list[str]) -> str | None:
     command = Path(parts[0]).name.lower()
+    exact_command = parts[0]
     if command == "npm":
         if len(parts) > 1 and parts[1] == "install":
             return _rtk_prefix(parts)
@@ -769,13 +793,51 @@ def _rewrite_package_manager(parts: list[str]) -> str | None:
 
     if len(parts) > 1 and parts[1] in {"install", "list", "outdated"}:
         return _rtk_prefix(parts)
-    if len(parts) > 1 and parts[1] in {"test", "lint", "build"}:
+    if exact_command == "pnpm" and len(parts) == 2 and _safe_pnpm_direct_script(parts[1]):
         return _rtk_prefix(parts)
     if len(parts) > 2 and parts[1] == "run" and _safe_package_script(parts[2]):
         return _rtk_prefix(parts)
     if len(parts) > 2 and parts[1] == "exec":
         return _rewrite_pnpm_exec(parts)
+    if (
+        exact_command == "pnpm"
+        and len(parts) == 4
+        and parts[1] == "--filter"
+        and _safe_pnpm_filtered_invocation(parts[2:])
+    ):
+        return _rtk_prefix(parts)
     return None
+
+
+def _safe_pnpm_direct_script(script: str) -> bool:
+    lowered = script.lower()
+    if any(word in lowered for word in _SERVER_SCRIPT_WORDS):
+        return False
+    return (
+        script in _SAFE_PNPM_DIRECT_SCRIPTS
+        or script.startswith("test:")
+        or script.startswith("check:")
+    )
+
+
+def _safe_pnpm_filtered_invocation(args: list[str]) -> bool:
+    package, script = args
+    return _safe_pnpm_package_selector(package) and script in _SAFE_PNPM_FILTERED_SCRIPTS
+
+
+def _safe_pnpm_package_selector(selector: str) -> bool:
+    if not selector or any(char.isspace() for char in selector):
+        return False
+    if any(token in selector for token in ("*", "?", "[", "]", "{", "}", "!", "...", "^", ":", ",")):
+        return False
+    if selector.startswith(("./", "../")):
+        return False
+    if selector.startswith("@"):
+        parts = selector[1:].split("/")
+        return len(parts) == 2 and all(_PACKAGE_NAME_PART_RE.match(part) for part in parts)
+    if "/" in selector:
+        return False
+    return _PACKAGE_NAME_PART_RE.match(selector) is not None
 
 
 def _safe_package_script(script: str) -> bool:

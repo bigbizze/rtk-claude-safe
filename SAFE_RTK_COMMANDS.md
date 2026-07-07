@@ -64,14 +64,20 @@ These families are included only in the narrower forms implemented in `allowlist
   variants. Cargo JSON message formats are denied.
 - JavaScript and TypeScript: named package scripts for `test`, `lint`, `build`, `typecheck`,
   `check`, and format-check style scripts. Broad script names are not accepted.
+- `pnpm` direct validation shorthands: exact `pnpm test`, `pnpm lint`, `pnpm build`,
+  `pnpm typecheck`, `pnpm test:*`, `pnpm check:*`, and `pnpm boundaries` commands with no extra
+  args.
+- `pnpm --filter`: exact package-name selectors for `typecheck`, `test`, and `build` only.
+  Broader pnpm selector syntax, `--filter=<package>`, repeated filters, custom filtered scripts,
+  and extra args are denied.
 - `pnpm exec`: selected tools only, such as TypeScript, ESLint, Prettier check, Vitest run, and
   Prisma generate.
 - `npx`: selected known tools only, preserving the `npx` invocation in the RTK rewrite.
 - Python: `pytest`, `mypy`, `ruff check`, `ruff format --check`, and read-only pip inventory
   commands: `pip list`, `pip outdated`, and `pip show`.
-- Git: bounded orientation commands only, including narrow `git status`, bounded
-  `git log --oneline`, `git stash list`, `git stash show --stat`, `git worktree list`, and
-  `git diff --stat`.
+- Git: bounded orientation commands only, including narrow `git status`, `git rev-parse HEAD`,
+  current/local branch inspection, bounded `git log --oneline`, `git stash list`,
+  `git worktree list`, `git diff --stat`, and `git diff --check`.
 - GitHub CLI: safe list/view surfaces such as `gh pr list`, `gh issue list`, `gh pr view`, and
   `gh issue view`. Comment-fetching, JSON, jq, template, web, and unsafe shorthand forms are denied.
 - Prisma: `prisma generate`, `prisma db push`, and `prisma migrate dev`.
@@ -87,7 +93,7 @@ These remain denied even though RTK may expose handlers for some of them:
 - `git commit` and `git push`. False-success or output-corruption risk is worse than the token
   savings.
 - Broad `git log`, `git stash`, `git worktree`, and `git diff` forms. Only the narrow orientation
-  forms above are allowed.
+  forms above are allowed; diff pathspecs and revisions remain denied.
 - `git diff --name-only`, `--name-status`, and other machine-style diff output.
 - Broad `npm run *`, `pnpm run *`, `yarn run *`, and broad `pnpm exec *`.
 - `dotnet test`, pending stronger current validation.

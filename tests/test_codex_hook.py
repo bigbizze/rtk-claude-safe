@@ -92,6 +92,46 @@ def test_codex_hook_allows_cargo_fmt_policy_exception_before_cargo_validation() 
     }
 
 
+def test_codex_hook_rewrites_cargo_fmt_check_before_git_diff_check() -> None:
+    rc, output = _run_hook(
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "cargo fmt --check && git diff --check"},
+        }
+    )
+
+    assert rc == 0
+    assert json.loads(output) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {
+                "command": "rtk cargo fmt --check && rtk git diff --check",
+            },
+        }
+    }
+
+
+def test_codex_hook_rewrites_filtered_pnpm_validation() -> None:
+    rc, output = _run_hook(
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "pnpm --filter @kernel-web-app/persistence test"},
+        }
+    )
+
+    assert rc == 0
+    assert json.loads(output) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {
+                "command": "rtk pnpm --filter @kernel-web-app/persistence test",
+            },
+        }
+    }
+
+
 def test_codex_hook_emits_nothing_for_non_allowlisted_command() -> None:
     rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "ls"}})
 

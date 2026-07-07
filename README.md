@@ -52,8 +52,8 @@ These are representative upstream bug classes that shape the default policy:
   `rtk npx ...`.
 - **`git diff` for code review is lossy by design.** rtk's diff condenser drops content that
   matters for review. (#1313 truncation class, #1486 piped corruption.) The classifier allows
-  only `git diff --stat` and rejects `--name-only`, bare `git diff`, and machine-readable diff
-  forms.
+  only narrow orientation checks such as `git diff --stat` and `git diff --check`, and rejects
+  pathspecs, revisions, `--name-only`, bare `git diff`, and machine-readable diff forms.
 - **`playwright test` strips DOM/locator/call-log on failure.** (Issue #690 — the rtk README
   also recommends excluding it.) **Not in the allowlist.**
 - **Watch/dev/server commands should not be captured.** Long-running commands can buffer or
@@ -62,10 +62,10 @@ These are representative upstream bug classes that shape the default policy:
 
 The rewrite policy itself — defined in `rtk_claude_safe/allowlist.py` — is a parsed-command
 classifier, not a raw wildcard list. It covers safe cargo/test/lint/typecheck/build commands,
-named npm/pnpm scripts, selected `npx` tools, selected Prisma commands (`generate`, `db push`, and
-`migrate dev`), tightly-scoped git orientation commands, safe gh list/view commands except
-comment-fetching modes, read-only pip inventory commands, and a few small utilities (`tree`, `wc`,
-`env`).
+named npm/pnpm scripts, exact pnpm validation shorthands and package-filtered pnpm validation,
+selected `npx` tools, selected Prisma commands (`generate`, `db push`, and `migrate dev`),
+tightly-scoped git orientation commands, safe gh list/view commands except comment-fetching modes,
+read-only pip inventory commands, and a few small utilities (`tree`, `wc`, `env`).
 
 ### What `rtk-claude-safe init` does
 
