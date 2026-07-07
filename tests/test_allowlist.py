@@ -99,6 +99,33 @@ def test_claude_candidate_hooks_cover_safe_git_log_flag_order() -> None:
     )
 
 
+def test_codex_rewrites_gofmt_write_before_go_test_policy_exception() -> None:
+    command = "gofmt -w main.go git.go internal/foo.go && go test ./..."
+
+    assert rewrite_command_for_agent(command, "codex") == (
+        "gofmt -w main.go git.go internal/foo.go && rtk go test ./..."
+    )
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gofmt -w main.go",
+        "gofmt -w main.go && git status",
+        "gofmt -w main.go || go test ./...",
+        "gofmt -w main.go && cd app && go test ./...",
+        "go test ./... && gofmt -w main.go",
+        "gofmt -w main.go && go test -json ./...",
+        "gofmt -w ./main.go ../other.go && go test ./...",
+        "gofmt -w main.go README.md && go test ./...",
+        "gofmt -r 'a -> b' -w main.go && go test ./...",
+    ],
+)
+def test_gofmt_policy_exception_stays_narrow(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+
+
 @pytest.mark.parametrize(
     "command",
     [

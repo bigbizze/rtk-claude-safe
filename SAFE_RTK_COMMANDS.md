@@ -43,6 +43,13 @@ unchanged because `cd` is an explicitly allowed neutral segment. Denied segments
 already-wrapped `rtk ...`, environment-prefixed commands, watch/server commands, machine-readable
 output modes, hard-excluded commands, and arbitrary shell commands make the whole list fail open.
 
+Codex has an explicit narrow-exception contract for preserving specific non-RTK segments in
+auto-allowed rewrites. Each exception is named in `allowlist.py`, scoped to Codex, and must inspect
+the surrounding shell list. The first exception is `gofmt-write-before-go-test`: `gofmt -w` with
+explicit relative `.go` files may be preserved before an `&& go test ...` segment that is rewritten
+through RTK. It does not apply to Claude, non-Go files, parent-directory paths, `||`, or formatter
+invocations without a following rewritten Go test segment.
+
 ## Included Families
 
 These families are included only in the narrower forms implemented in `allowlist.py`:

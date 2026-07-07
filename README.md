@@ -119,6 +119,10 @@ payloads, non-Bash tools, unsupported shell syntax, excluded commands, and alrea
 Top-level `&&`, `||`, and `;` shell lists are supported when at least one segment is allowlisted
 and every other segment is an explicitly neutral preserved command such as `cd app`; unsupported
 shell syntax such as pipes, redirects, backgrounding, grouping, and substitutions still fails open.
+Codex also has a named narrow-exception contract for commands that are acceptable to auto-allow as
+part of a rewritten shell list even though they are not RTK-wrapped themselves. The first exception
+is `gofmt -w <explicit .go files> && go test ...`, which rewrites only the test segment, for
+example `gofmt -w main.go git.go && rtk go test ./...`.
 
 ### Codex SQLite Log Maintenance
 

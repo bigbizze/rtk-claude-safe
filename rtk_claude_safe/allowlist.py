@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 Agent = Literal["claude", "codex"]
 
@@ -175,6 +176,41 @@ _SERVER_SCRIPT_WORDS = {"dev", "start", "serve", "server", "preview", "storybook
 _SAFE_SCRIPT_ROOTS = {"test", "lint", "build", "typecheck", "check", "format:check"}
 
 
+@dataclass(frozen=True)
+class ShellListPolicyException:
+    """Narrow opt-in exception for preserving a non-RTK segment in a shell list."""
+
+    name: str
+    agents: frozenset[Agent]
+    can_preserve: Callable[[list[str], list[str], list[str], list[str]], bool]
+
+
+def _can_preserve_gofmt_before_go_test(
+    parts: list[str],
+    _following_rewrites: list[str],
+    remaining_segments: list[str],
+    remaining_separators: list[str],
+) -> bool:
+    if not _safe_gofmt_write_args(parts):
+        return False
+    if not remaining_segments or not remaining_separators or remaining_separators[0] != "&&":
+        return False
+    next_parts = _split_command(remaining_segments[0])
+    if not next_parts:
+        return False
+    next_rewrite = _rewrite_segment(next_parts, "codex")
+    return next_rewrite is not None and next_rewrite.startswith("rtk go test")
+
+
+CODEX_SHELL_LIST_POLICY_EXCEPTIONS: tuple[ShellListPolicyException, ...] = (
+    ShellListPolicyException(
+        name="gofmt-write-before-go-test",
+        agents=frozenset({"codex"}),
+        can_preserve=_can_preserve_gofmt_before_go_test,
+    ),
+)
+
+
 def is_complex_shell_command(command: str) -> bool:
     """Return True when a command contains shell syntax beyond one simple command."""
     stripped = command.strip()
@@ -331,25 +367,63 @@ def _rewrite_shell_list(segments: list[str], separators: list[str], agent: Agent
             return None
         segment_parts.append(parts)
 
-    rewritten_segments: list[str] = []
+    rewritten_segments: list[str | None] = []
     changed = False
     for segment in segment_parts:
         rewrite = _rewrite_segment(segment, agent)
         if rewrite is None:
             if not _can_preserve_shell_list_segment(segment):
-                return None
-            rewritten_segments.append(_join(segment))
-            continue
+                rewritten_segments.append(None)
+                continue
+            rewrite = _join(segment)
+        else:
+            changed = True
         rewritten_segments.append(rewrite)
-        changed = True
 
     if not changed:
         return None
 
-    result = rewritten_segments[0]
-    for separator, segment in zip(separators, rewritten_segments[1:]):
+    for index, rewrite in enumerate(rewritten_segments):
+        if rewrite is not None:
+            continue
+        segment = segment_parts[index]
+        if not _can_apply_shell_list_policy_exception(
+            agent,
+            segment,
+            [item for item in rewritten_segments[index + 1 :] if item is not None],
+            segments[index + 1 :],
+            separators[index:],
+        ):
+            return None
+        rewritten_segments[index] = _join(segment)
+
+    if any(segment is None for segment in rewritten_segments):
+        return None
+
+    materialized_segments = [segment for segment in rewritten_segments if segment is not None]
+    result = materialized_segments[0]
+    for separator, segment in zip(separators, materialized_segments[1:]):
         result = f"{result} {separator} {segment}"
     return result
+
+
+def _can_apply_shell_list_policy_exception(
+    agent: Agent,
+    parts: list[str],
+    rewritten_segments: list[str],
+    remaining_segments: list[str],
+    remaining_separators: list[str],
+) -> bool:
+    return any(
+        agent in exception.agents
+        and exception.can_preserve(
+            parts,
+            rewritten_segments,
+            remaining_segments,
+            remaining_separators,
+        )
+        for exception in CODEX_SHELL_LIST_POLICY_EXCEPTIONS
+    )
 
 
 def _rewrite_segment(parts: list[str], agent: Agent) -> str | None:
@@ -417,6 +491,24 @@ def _safe_cd_args(args: list[str]) -> bool:
     if len(args) != 1 or args[0].startswith(("-", "~")):
         return False
     return not any(char in args[0] for char in _UNSAFE_PRESERVED_ARG_CHARS)
+
+
+def _safe_gofmt_write_args(parts: list[str]) -> bool:
+    if len(parts) < 3 or Path(parts[0]).name.lower() != "gofmt":
+        return False
+    if parts[1] != "-w":
+        return False
+    return all(_safe_gofmt_path(arg) for arg in parts[2:])
+
+
+def _safe_gofmt_path(arg: str) -> bool:
+    if not arg.endswith(".go"):
+        return False
+    if arg.startswith(("-", "~", "/")):
+        return False
+    if ".." in Path(arg).parts:
+        return False
+    return not any(char in arg for char in _UNSAFE_PRESERVED_ARG_CHARS)
 
 
 def _is_rtk_wrapped_parts(parts: list[str]) -> bool:

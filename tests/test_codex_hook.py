@@ -56,6 +56,24 @@ def test_codex_hook_rewrites_allowlisted_segments_in_shell_list() -> None:
     }
 
 
+def test_codex_hook_allows_gofmt_policy_exception_before_go_test() -> None:
+    rc, output = _run_hook(
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "gofmt -w main.go git.go && go test ./..."},
+        }
+    )
+
+    assert rc == 0
+    assert json.loads(output) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {"command": "gofmt -w main.go git.go && rtk go test ./..."},
+        }
+    }
+
+
 def test_codex_hook_emits_nothing_for_non_allowlisted_command() -> None:
     rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "ls"}})
 
