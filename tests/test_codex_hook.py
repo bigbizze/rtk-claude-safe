@@ -74,6 +74,24 @@ def test_codex_hook_allows_gofmt_policy_exception_before_go_test() -> None:
     }
 
 
+def test_codex_hook_allows_cargo_fmt_policy_exception_before_cargo_validation() -> None:
+    rc, output = _run_hook(
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "cargo fmt --all && cargo clippy -q --workspace"},
+        }
+    )
+
+    assert rc == 0
+    assert json.loads(output) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {"command": "cargo fmt --all && rtk cargo clippy -q --workspace"},
+        }
+    }
+
+
 def test_codex_hook_emits_nothing_for_non_allowlisted_command() -> None:
     rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "ls"}})
 

@@ -202,11 +202,38 @@ def _can_preserve_gofmt_before_go_test(
     return next_rewrite is not None and next_rewrite.startswith("rtk go test")
 
 
+def _can_preserve_cargo_fmt_before_cargo_validation(
+    parts: list[str],
+    _following_rewrites: list[str],
+    remaining_segments: list[str],
+    remaining_separators: list[str],
+) -> bool:
+    if not _safe_cargo_fmt_write_args(parts):
+        return False
+    if not remaining_segments or not remaining_separators or remaining_separators[0] != "&&":
+        return False
+    next_parts = _split_command(remaining_segments[0])
+    if not next_parts:
+        return False
+    next_rewrite = _rewrite_segment(next_parts, "codex")
+    return (
+        next_rewrite is not None
+        and len(next_parts) > 1
+        and Path(next_parts[0]).name.lower() == "cargo"
+        and next_parts[1] in {"test", "check", "clippy"}
+    )
+
+
 CODEX_SHELL_LIST_POLICY_EXCEPTIONS: tuple[ShellListPolicyException, ...] = (
     ShellListPolicyException(
         name="gofmt-write-before-go-test",
         agents=frozenset({"codex"}),
         can_preserve=_can_preserve_gofmt_before_go_test,
+    ),
+    ShellListPolicyException(
+        name="cargo-fmt-before-cargo-validation",
+        agents=frozenset({"codex"}),
+        can_preserve=_can_preserve_cargo_fmt_before_cargo_validation,
     ),
 )
 
@@ -511,17 +538,26 @@ def _safe_gofmt_path(arg: str) -> bool:
     return not any(char in arg for char in _UNSAFE_PRESERVED_ARG_CHARS)
 
 
+def _safe_cargo_fmt_write_args(parts: list[str]) -> bool:
+    if len(parts) < 2 or Path(parts[0]).name.lower() != "cargo":
+        return False
+    return parts[1:] in (["fmt"], ["fmt", "--all"])
+
+
 def _is_rtk_wrapped_parts(parts: list[str]) -> bool:
     executable = Path(parts[0]).name.lower()
     return executable in {"rtk", "rtk.exe"}
 
 
 def _has_common_deny(parts: list[str]) -> bool:
-    return _has_machine_output_flag(parts) or _has_watch_flag(parts)
+    command = Path(parts[0]).name.lower() if parts else ""
+    return _has_machine_output_flag(parts, allow_quiet=command == "cargo") or _has_watch_flag(parts)
 
 
-def _has_machine_output_flag(parts: list[str]) -> bool:
+def _has_machine_output_flag(parts: list[str], *, allow_quiet: bool = False) -> bool:
     for index, part in enumerate(parts[1:], start=1):
+        if allow_quiet and part == "-q":
+            continue
         if part in _MACHINE_OUTPUT_FLAGS:
             return True
         if "=" in part:

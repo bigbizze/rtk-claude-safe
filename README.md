@@ -120,9 +120,11 @@ Top-level `&&`, `||`, and `;` shell lists are supported when at least one segmen
 and every other segment is an explicitly neutral preserved command such as `cd app`; unsupported
 shell syntax such as pipes, redirects, backgrounding, grouping, and substitutions still fails open.
 Codex also has a named narrow-exception contract for commands that are acceptable to auto-allow as
-part of a rewritten shell list even though they are not RTK-wrapped themselves. The first exception
-is `gofmt -w <explicit .go files> && go test ...`, which rewrites only the test segment, for
-example `gofmt -w main.go git.go && rtk go test ./...`.
+part of a rewritten shell list even though they are not RTK-wrapped themselves. Current exceptions
+include `gofmt -w <explicit .go files> && go test ...`, which rewrites only the test segment, for
+example `gofmt -w main.go git.go && rtk go test ./...`; and `cargo fmt` or `cargo fmt --all`
+immediately before `cargo test`, `cargo check`, or `cargo clippy`, which rewrites only the Cargo
+validation segment.
 
 ### Codex SQLite Log Maintenance
 

@@ -127,6 +127,55 @@ def test_gofmt_policy_exception_stays_narrow(command: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        (
+            "cargo fmt && cargo test -q -p kernel section_store",
+            "cargo fmt && rtk cargo test -q -p kernel section_store",
+        ),
+        (
+            "cargo fmt --all && cargo test --workspace",
+            "cargo fmt --all && rtk cargo test --workspace",
+        ),
+        (
+            "cargo fmt && cargo check -q -p kernel",
+            "cargo fmt && rtk cargo check -q -p kernel",
+        ),
+        (
+            "cargo fmt --all && cargo clippy -q --workspace --all-targets -- -D warnings",
+            "cargo fmt --all && rtk cargo clippy -q --workspace --all-targets -- -D warnings",
+        ),
+    ],
+)
+def test_codex_rewrites_cargo_fmt_before_cargo_validation_policy_exception(
+    command: str,
+    expected: str,
+) -> None:
+    assert rewrite_command_for_agent(command, "codex") == expected
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cargo fmt",
+        "cargo fmt || cargo test",
+        "cargo test --workspace && cargo fmt",
+        "cargo fmt --package kernel && cargo test -p kernel",
+        "cargo fmt --all -- --check && cargo test --workspace",
+        "cargo fmt && cargo test --message-format=json",
+        "cargo fmt && cargo check --message-format=json",
+        "cargo fmt && cargo clippy --message-format=json",
+        "cargo fmt && cargo build --workspace",
+        "cargo fmt && cargo doc --workspace",
+        "cargo fmt && cargo run",
+    ],
+)
+def test_cargo_fmt_policy_exception_stays_narrow(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+
+
+@pytest.mark.parametrize(
     "command",
     [
         "git status && git diff --stat",
