@@ -110,6 +110,8 @@ SCOPED_PATTERNS = _build_claude_candidate_patterns()
 _SHELL_PUNCTUATION_CHARS = "|&;()<>"
 _SAFE_SHELL_SEPARATORS = {"&&", "||", ";"}
 _UNSAFE_SHELL_EXPANSIONS = ("\n", "`", "$(", "<(", ">(")
+_PRESERVABLE_SHELL_LIST_COMMANDS = {"cd", "true", "false", ":"}
+_UNSAFE_PRESERVED_ARG_CHARS = "$`*?[]{};&|<>!"
 _ENV_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _MACHINE_OUTPUT_FLAGS = {
     "--json",
@@ -273,6 +275,8 @@ def _rewrite_shell_list(parts: list[str], agent: Agent) -> str | None:
     for segment in segments:
         rewrite = _rewrite_segment(segment, agent)
         if rewrite is None:
+            if not _can_preserve_shell_list_segment(segment):
+                return None
             rewritten_segments.append(_join(segment))
             continue
         rewritten_segments.append(rewrite)
@@ -311,6 +315,29 @@ def _is_shell_operator_token(token: str) -> bool:
 
 def _has_env_assignment_prefix(parts: list[str]) -> bool:
     return bool(parts and _ENV_PREFIX_RE.match(parts[0]))
+
+
+def _can_preserve_shell_list_segment(parts: list[str]) -> bool:
+    if not parts or _has_env_assignment_prefix(parts):
+        return False
+    command = Path(parts[0]).name.lower()
+    if command not in _PRESERVABLE_SHELL_LIST_COMMANDS:
+        return False
+    if command == "cd":
+        return _safe_cd_args(parts[1:])
+    return len(parts) == 1
+
+
+def _safe_cd_args(args: list[str]) -> bool:
+    if not args or args == ["-"]:
+        return True
+    if args[0] == "--":
+        args = args[1:]
+        if not args:
+            return True
+    if len(args) != 1 or args[0].startswith("-"):
+        return False
+    return not any(char in args[0] for char in _UNSAFE_PRESERVED_ARG_CHARS)
 
 
 def _is_rtk_wrapped_parts(parts: list[str]) -> bool:

@@ -16,7 +16,8 @@ Both agent hooks use the same parsed-command classifier:
 3. Deny unsupported shell syntax before any segment allow rule can match.
 4. Deny long-running, watch, server, and machine-readable output modes per segment.
 5. Run command-family-specific safe predicates per segment.
-6. Return an explicit RTK rewrite command for any allowlisted segments, or `None` to fail open.
+6. Return an explicit RTK rewrite command only when at least one segment is allowlisted and every
+   other segment is an explicitly preservable neutral command; otherwise return `None` to fail open.
 
 Fail open means the hook emits no output and the agent runs the original command unchanged. This is
 intentional. The package optimizes token use; it is not a security boundary.
@@ -38,7 +39,9 @@ The classifier rejects these forms before allowlist matching:
 Top-level `&&`, `||`, and `;` shell lists are handled segment by segment. For example,
 `cd app && npm run test && git status` rewrites to
 `cd app && rtk npm run test && rtk git status`; the unmatched `cd app` segment is preserved
-unchanged.
+unchanged because `cd` is an explicitly allowed neutral segment. Denied segments such as
+already-wrapped `rtk ...`, environment-prefixed commands, watch/server commands, machine-readable
+output modes, hard-excluded commands, and arbitrary shell commands make the whole list fail open.
 
 ## Included Families
 

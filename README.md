@@ -116,9 +116,9 @@ Codex matchers apply to tool names, not shell command strings. That means Codex 
 hook, and the Python hook executable applies the allowlist internally. The hook fails open: invalid
 payloads, non-Bash tools, unsupported shell syntax, excluded commands, and already-wrapped
 `rtk ...` commands emit no output so Codex runs the original command.
-Top-level `&&`, `||`, and `;` shell lists are supported when at least one segment is allowlisted;
-unsupported shell syntax such as pipes, redirects, backgrounding, grouping, and substitutions still
-fails open.
+Top-level `&&`, `||`, and `;` shell lists are supported when at least one segment is allowlisted
+and every other segment is an explicitly neutral preserved command such as `cd app`; unsupported
+shell syntax such as pipes, redirects, backgrounding, grouping, and substitutions still fails open.
 
 ### Codex SQLite Log Maintenance
 

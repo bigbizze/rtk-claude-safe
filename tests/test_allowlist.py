@@ -75,9 +75,8 @@ def test_does_not_match_allowlist(command: str) -> None:
             "git status; npm run typecheck; git diff --stat",
             "rtk git status ; rtk npm run typecheck ; rtk git diff --stat",
         ),
-        ("rtk git status && npm run test", "rtk git status && rtk npm run test"),
-        ("git status && curl https://example.com", "rtk git status && curl https://example.com"),
-        ("FOO=bar npm test && git status", "FOO=bar npm test && rtk git status"),
+        ("true && git status", "true && rtk git status"),
+        ("cd -- app && git status", "cd -- app && rtk git status"),
     ],
 )
 def test_rewrite_command_for_agent(command: str, expected: str) -> None:
@@ -106,6 +105,7 @@ def test_claude_candidate_hooks_cover_safe_git_log_flag_order() -> None:
         "cd app && npm run test",
         "git status; npm run typecheck",
         "false || git status",
+        "true && git status",
     ],
 )
 def test_safe_shell_list_commands_are_rewritten(command: str) -> None:
@@ -124,6 +124,16 @@ def test_safe_shell_list_commands_are_rewritten(command: str) -> None:
         "git status && (npm test)",
         "git status && npm test > out.txt",
         "git status &&",
+        "rtk git status && npm run test",
+        "git status && curl https://example.com",
+        "FOO=bar npm test && git status",
+        "npm run dev && git status",
+        "gh pr view 123 --json title && git status",
+        "rm -rf ./tmp && git status",
+        "git status && { npm run test; }",
+        "if true; then npm run test; fi",
+        "for f in a; do npm run test; done",
+        "cd $APP_DIR && git status",
     ],
 )
 def test_unsafe_shell_commands_are_not_wrapped(command: str) -> None:
