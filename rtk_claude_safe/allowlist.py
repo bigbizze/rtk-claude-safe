@@ -97,10 +97,19 @@ CANDIDATE_PATTERNS: list[str] = [
     "pip show*",
 ]
 
-# Compatibility name for callers that imported the original pattern list.
-SCOPED_PATTERNS = CANDIDATE_PATTERNS
+def _build_claude_candidate_patterns() -> list[str]:
+    patterns = list(CANDIDATE_PATTERNS)
+    for separator in ("&&", "||", ";"):
+        patterns.extend(f"*{separator}*{pattern}" for pattern in CANDIDATE_PATTERNS)
+    return patterns
 
-_COMPLEX_SHELL_TOKENS = ("|", ">", "<", ";", "&", "&&", "||", "\n", "`", "$(", "<(", ">(")
+
+# Compatibility name for callers that imported the scoped pattern list.
+SCOPED_PATTERNS = _build_claude_candidate_patterns()
+
+_SHELL_PUNCTUATION_CHARS = "|&;()<>"
+_SAFE_SHELL_SEPARATORS = {"&&", "||", ";"}
+_UNSAFE_SHELL_EXPANSIONS = ("\n", "`", "$(", "<(", ">(")
 _ENV_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _MACHINE_OUTPUT_FLAGS = {
     "--json",
@@ -166,13 +175,18 @@ _SAFE_SCRIPT_ROOTS = {"test", "lint", "build", "typecheck", "check", "format:che
 
 
 def is_complex_shell_command(command: str) -> bool:
-    """Return True when a command contains syntax we should not rewrite."""
+    """Return True when a command contains shell syntax beyond one simple command."""
     stripped = command.strip()
     if not stripped:
         return False
     if _ENV_PREFIX_RE.match(stripped):
         return True
-    return any(token in stripped for token in _COMPLEX_SHELL_TOKENS)
+    if _has_unsafe_shell_expansion(stripped):
+        return True
+    tokens = _split_shell_command(stripped)
+    if tokens is None:
+        return False
+    return any(token in _SAFE_SHELL_SEPARATORS or _is_shell_operator_token(token) for token in tokens)
 
 
 def is_already_rtk_wrapped(command: str) -> bool:
@@ -187,6 +201,16 @@ def is_already_rtk_wrapped(command: str) -> bool:
 def _split_command(command: str) -> list[str] | None:
     try:
         return shlex.split(command.strip())
+    except ValueError:
+        return None
+
+
+def _split_shell_command(command: str) -> list[str] | None:
+    try:
+        lexer = shlex.shlex(command.strip(), posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        return list(lexer)
     except ValueError:
         return None
 
@@ -211,16 +235,87 @@ def should_wrap_command(command: str) -> bool:
 
 def rewrite_command_for_agent(command: str, agent: Agent = "codex") -> str | None:
     """Return the concrete RTK rewrite for an agent, or None to fail open."""
-    parts = _split_command(command)
+    parts = _split_shell_command(command)
+    if not parts or _has_unsafe_shell_expansion(command):
+        return None
+
+    if not any(token in _SAFE_SHELL_SEPARATORS for token in parts):
+        if any(_is_shell_operator_token(token) for token in parts):
+            return None
+        return _rewrite_segment(parts, agent)
+
+    return _rewrite_shell_list(parts, agent)
+
+
+def _rewrite_shell_list(parts: list[str], agent: Agent) -> str | None:
+    segments: list[list[str]] = []
+    separators: list[str] = []
+    current: list[str] = []
+
+    for part in parts:
+        if part in _SAFE_SHELL_SEPARATORS:
+            if not current:
+                return None
+            segments.append(current)
+            separators.append(part)
+            current = []
+            continue
+        if _is_shell_operator_token(part):
+            return None
+        current.append(part)
+
+    if not current:
+        return None
+    segments.append(current)
+
+    rewritten_segments: list[str] = []
+    changed = False
+    for segment in segments:
+        rewrite = _rewrite_segment(segment, agent)
+        if rewrite is None:
+            rewritten_segments.append(_join(segment))
+            continue
+        rewritten_segments.append(rewrite)
+        changed = True
+
+    if not changed:
+        return None
+
+    result = rewritten_segments[0]
+    for separator, segment in zip(separators, rewritten_segments[1:]):
+        result = f"{result} {separator} {segment}"
+    return result
+
+
+def _rewrite_segment(parts: list[str], agent: Agent) -> str | None:
     if not parts:
+        return None
+    if _has_env_assignment_prefix(parts):
         return None
     if Path(parts[0]).name.lower() == "env" and len(parts) > 1:
         return None
-    if is_already_rtk_wrapped(command) or is_complex_shell_command(command):
+    if _is_rtk_wrapped_parts(parts):
         return None
     if _has_common_deny(parts):
         return None
     return _rewrite_parts(parts, agent)
+
+
+def _has_unsafe_shell_expansion(command: str) -> bool:
+    return any(token in command for token in _UNSAFE_SHELL_EXPANSIONS)
+
+
+def _is_shell_operator_token(token: str) -> bool:
+    return all(char in _SHELL_PUNCTUATION_CHARS for char in token)
+
+
+def _has_env_assignment_prefix(parts: list[str]) -> bool:
+    return bool(parts and _ENV_PREFIX_RE.match(parts[0]))
+
+
+def _is_rtk_wrapped_parts(parts: list[str]) -> bool:
+    executable = Path(parts[0]).name.lower()
+    return executable in {"rtk", "rtk.exe"}
 
 
 def _has_common_deny(parts: list[str]) -> bool:
@@ -569,5 +664,5 @@ def build_claude_scoped_hooks(command: str = "rtk hook claude") -> list[dict]:
     """Build Claude Code scoped hook entries from the shared allowlist."""
     return [
         {"type": "command", "command": command, "if": f"Bash({pattern})"}
-        for pattern in CANDIDATE_PATTERNS
+        for pattern in SCOPED_PATTERNS
     ]

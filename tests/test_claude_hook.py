@@ -58,11 +58,20 @@ def test_claude_hook_uses_mapped_rewrite_command_and_preserves_extra_input() -> 
     }
 
 
-def test_claude_hook_fails_open_for_complex_command() -> None:
+def test_claude_hook_rewrites_allowlisted_segments_in_shell_list() -> None:
+    rc, output = _run_hook("cd app && npm run test && git status")
+
+    assert rc == 0
+    assert json.loads(output)["hookSpecificOutput"]["updatedInput"] == {
+        "command": "cd app && rtk npm run test && rtk git status",
+    }
+
+
+def test_claude_hook_fails_open_for_unsafe_shell_command() -> None:
     stdout = io.StringIO()
 
     assert claude_hook.main(
-        stdin=io.StringIO(_payload("git status && curl https://example.com")), stdout=stdout
+        stdin=io.StringIO(_payload("git status | cat")), stdout=stdout
     ) == 0
     assert stdout.getvalue() == ""
 
@@ -77,7 +86,7 @@ def test_claude_hook_does_not_probe_rtk_for_fail_open_inputs(monkeypatch) -> Non
         "{not json",
         _payload("git status", tool_name="apply_patch"),
         _payload("ls"),
-        _payload("git status && git diff --stat"),
+        _payload("git status | cat"),
         _payload("rtk git status"),
     ]
     for payload in payloads:

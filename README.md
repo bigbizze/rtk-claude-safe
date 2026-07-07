@@ -80,9 +80,11 @@ comment-fetching modes, read-only pip inventory commands, and a few small utilit
    `~/.local/bin/rtk`. The downloaded binary must be reachable on `PATH` before config is patched.
 3. **Patch Claude Code when present.** Finds or creates the global `PreToolUse` matcher groups,
    removes older RTK-managed hooks, and adds the current scoped candidate list once. Those scoped
-   hooks call `rtk-claude-safe claude-hook`, which rejects complex or uncertain shell commands and
-   emits direct `updatedInput.command` rewrites. Idempotent — running again is a no-op if the scoped
-   hooks are already current. Other user hooks under the same matcher are preserved.
+   hooks call `rtk-claude-safe claude-hook`, which rejects unsupported or uncertain shell syntax and
+   emits direct `updatedInput.command` rewrites. Top-level `&&`, `||`, and `;` chains are classified
+   segment by segment, so a command such as `cd app && npm run test` becomes
+   `cd app && rtk npm run test`. Idempotent — running again is a no-op if the scoped hooks are
+   already current. Other user hooks under the same matcher are preserved.
 4. **Patch Codex when present.** Creates or updates `~/.codex/hooks.json` with one `^Bash$`
    `PreToolUse` command hook that calls `rtk-claude-safe codex-hook`. Other hook events, matcher
    groups, and user hooks are preserved.
@@ -112,8 +114,11 @@ Not supported in this release:
 
 Codex matchers apply to tool names, not shell command strings. That means Codex gets one `^Bash$`
 hook, and the Python hook executable applies the allowlist internally. The hook fails open: invalid
-payloads, non-Bash tools, complex shell commands, excluded commands, and already-wrapped `rtk ...`
-commands emit no output so Codex runs the original command.
+payloads, non-Bash tools, unsupported shell syntax, excluded commands, and already-wrapped
+`rtk ...` commands emit no output so Codex runs the original command.
+Top-level `&&`, `||`, and `;` shell lists are supported when at least one segment is allowlisted;
+unsupported shell syntax such as pipes, redirects, backgrounding, grouping, and substitutions still
+fails open.
 
 ### Codex SQLite Log Maintenance
 

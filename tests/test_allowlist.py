@@ -68,6 +68,16 @@ def test_does_not_match_allowlist(command: str) -> None:
         ("pip show flask", "rtk pip show flask"),
         ("eslint .", "rtk lint ."),
         ("npx vitest run", "rtk npx vitest run"),
+        ("git status && git diff --stat", "rtk git status && rtk git diff --stat"),
+        ("cd app && npm run test", "cd app && rtk npm run test"),
+        ("false || git status", "false || rtk git status"),
+        (
+            "git status; npm run typecheck; git diff --stat",
+            "rtk git status ; rtk npm run typecheck ; rtk git diff --stat",
+        ),
+        ("rtk git status && npm run test", "rtk git status && rtk npm run test"),
+        ("git status && curl https://example.com", "rtk git status && curl https://example.com"),
+        ("FOO=bar npm test && git status", "FOO=bar npm test && rtk git status"),
     ],
 )
 def test_rewrite_command_for_agent(command: str, expected: str) -> None:
@@ -92,16 +102,31 @@ def test_claude_candidate_hooks_cover_safe_git_log_flag_order() -> None:
 @pytest.mark.parametrize(
     "command",
     [
-        "git status | cat",
         "git status && git diff --stat",
-        "cd app && npm test",
+        "cd app && npm run test",
+        "git status; npm run typecheck",
+        "false || git status",
+    ],
+)
+def test_safe_shell_list_commands_are_rewritten(command: str) -> None:
+    assert is_complex_shell_command(command)
+    assert should_wrap_command(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git status | cat",
         "FOO=bar npm test",
         "echo $(git status)",
         "git status > out.txt",
         "git status & curl https://example.com",
+        "git status && (npm test)",
+        "git status && npm test > out.txt",
+        "git status &&",
     ],
 )
-def test_complex_shell_commands_are_not_wrapped(command: str) -> None:
+def test_unsafe_shell_commands_are_not_wrapped(command: str) -> None:
     assert is_complex_shell_command(command)
     assert not should_wrap_command(command)
 
