@@ -108,7 +108,6 @@ def _build_claude_candidate_patterns() -> list[str]:
 SCOPED_PATTERNS = _build_claude_candidate_patterns()
 
 _SHELL_PUNCTUATION_CHARS = "|&;()<>"
-_SAFE_SHELL_SEPARATORS = {"&&", "||", ";"}
 _UNSAFE_SHELL_EXPANSIONS = ("\n", "`", "$", "<(", ">(")
 _PRESERVABLE_SHELL_LIST_COMMANDS = {"cd", "true", "false", ":"}
 _UNSAFE_PRESERVED_ARG_CHARS = "$`*?[]{};&|<>!"
@@ -185,10 +184,11 @@ def is_complex_shell_command(command: str) -> bool:
         return True
     if _has_unsafe_shell_expansion(stripped):
         return True
-    tokens = _split_shell_command(stripped)
-    if tokens is None:
-        return False
-    return any(token in _SAFE_SHELL_SEPARATORS or _is_shell_operator_token(token) for token in tokens)
+    shell_list = _split_shell_list(stripped)
+    if shell_list is None:
+        return _has_unquoted_shell_syntax(stripped)
+    _segments, separators = shell_list
+    return bool(separators)
 
 
 def is_already_rtk_wrapped(command: str) -> bool:
@@ -203,16 +203,6 @@ def is_already_rtk_wrapped(command: str) -> bool:
 def _split_command(command: str) -> list[str] | None:
     try:
         return shlex.split(command.strip())
-    except ValueError:
-        return None
-
-
-def _split_shell_command(command: str) -> list[str] | None:
-    try:
-        lexer = shlex.shlex(command.strip(), posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        return list(lexer)
     except ValueError:
         return None
 
@@ -237,42 +227,113 @@ def should_wrap_command(command: str) -> bool:
 
 def rewrite_command_for_agent(command: str, agent: Agent = "codex") -> str | None:
     """Return the concrete RTK rewrite for an agent, or None to fail open."""
-    parts = _split_shell_command(command)
-    if not parts or _has_unsafe_shell_expansion(command):
+    if _has_unsafe_shell_expansion(command):
         return None
 
-    if not any(token in _SAFE_SHELL_SEPARATORS for token in parts):
-        if any(_is_shell_operator_token(token) for token in parts):
+    shell_list = _split_shell_list(command)
+    if shell_list is None:
+        return None
+
+    segments, separators = shell_list
+    if not separators:
+        parts = _split_command(segments[0])
+        if not parts:
             return None
         return _rewrite_segment(parts, agent)
 
-    return _rewrite_shell_list(parts, agent)
+    return _rewrite_shell_list(segments, separators, agent)
 
 
-def _rewrite_shell_list(parts: list[str], agent: Agent) -> str | None:
-    segments: list[list[str]] = []
-    separators: list[str] = []
-    current: list[str] = []
-
-    for part in parts:
-        if part in _SAFE_SHELL_SEPARATORS:
-            if not current:
-                return None
-            segments.append(current)
-            separators.append(part)
-            current = []
-            continue
-        if _is_shell_operator_token(part):
-            return None
-        current.append(part)
-
-    if not current:
+def _split_shell_list(command: str) -> tuple[list[str], list[str]] | None:
+    stripped = command.strip()
+    if not stripped:
         return None
-    segments.append(current)
+
+    segments: list[str] = []
+    separators: list[str] = []
+    quote: str | None = None
+    escaped = False
+    segment_start = 0
+    index = 0
+
+    while index < len(stripped):
+        char = stripped[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if char == "\\":
+            escaped = True
+            index += 1
+            continue
+        if quote is not None:
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            index += 1
+            continue
+        if char == ";":
+            if not _append_shell_segment(stripped, segment_start, index, segments):
+                return None
+            separators.append(";")
+            segment_start = index + 1
+            index += 1
+            continue
+        if char == "&":
+            if index + 1 < len(stripped) and stripped[index + 1] == "&":
+                if index + 2 < len(stripped) and stripped[index + 2] == "&":
+                    return None
+                if not _append_shell_segment(stripped, segment_start, index, segments):
+                    return None
+                separators.append("&&")
+                segment_start = index + 2
+                index += 2
+                continue
+            return None
+        if char == "|":
+            if index + 1 < len(stripped) and stripped[index + 1] == "|":
+                if index + 2 < len(stripped) and stripped[index + 2] == "|":
+                    return None
+                if not _append_shell_segment(stripped, segment_start, index, segments):
+                    return None
+                separators.append("||")
+                segment_start = index + 2
+                index += 2
+                continue
+            return None
+        if char in "<>()":
+            return None
+        index += 1
+
+    if quote is not None or escaped:
+        return None
+    if not _append_shell_segment(stripped, segment_start, len(stripped), segments):
+        return None
+    return segments, separators
+
+
+def _append_shell_segment(command: str, start: int, end: int, segments: list[str]) -> bool:
+    segment = command[start:end].strip()
+    if not segment:
+        return False
+    segments.append(segment)
+    return True
+
+
+def _rewrite_shell_list(segments: list[str], separators: list[str], agent: Agent) -> str | None:
+    segment_parts: list[list[str]] = []
+    for segment in segments:
+        parts = _split_command(segment)
+        if not parts:
+            return None
+        segment_parts.append(parts)
 
     rewritten_segments: list[str] = []
     changed = False
-    for segment in segments:
+    for segment in segment_parts:
         rewrite = _rewrite_segment(segment, agent)
         if rewrite is None:
             if not _can_preserve_shell_list_segment(segment):
@@ -309,8 +370,26 @@ def _has_unsafe_shell_expansion(command: str) -> bool:
     return any(token in command for token in _UNSAFE_SHELL_EXPANSIONS)
 
 
-def _is_shell_operator_token(token: str) -> bool:
-    return all(char in _SHELL_PUNCTUATION_CHARS for char in token)
+def _has_unquoted_shell_syntax(command: str) -> bool:
+    quote: str | None = None
+    escaped = False
+    for char in command:
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if quote is not None:
+            if char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            continue
+        if char in _SHELL_PUNCTUATION_CHARS:
+            return True
+    return False
 
 
 def _has_env_assignment_prefix(parts: list[str]) -> bool:

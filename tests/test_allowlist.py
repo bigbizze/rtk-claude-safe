@@ -70,6 +70,7 @@ def test_does_not_match_allowlist(command: str) -> None:
         ("npx vitest run", "rtk npx vitest run"),
         ("git status && git diff --stat", "rtk git status && rtk git diff --stat"),
         ("cd app && npm run test", "cd app && rtk npm run test"),
+        ('pytest -k "a && b" && git status', "rtk pytest -k 'a && b' && rtk git status"),
         ("false || git status", "false || rtk git status"),
         (
             "git status; npm run typecheck; git diff --stat",
@@ -142,6 +143,22 @@ def test_safe_shell_list_commands_are_rewritten(command: str) -> None:
 )
 def test_unsafe_shell_commands_are_not_wrapped(command: str) -> None:
     assert is_complex_shell_command(command)
+    assert not should_wrap_command(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git status "&&" npm run test',
+        'git status ";" npm run test',
+        'true ";" npm run test',
+        'false "||" npm run test',
+        r"git status \; npm run test",
+        r"git status \&\& npm run test",
+    ],
+)
+def test_quoted_or_escaped_separators_are_not_shell_lists(command: str) -> None:
+    assert not is_complex_shell_command(command)
     assert not should_wrap_command(command)
 
 
