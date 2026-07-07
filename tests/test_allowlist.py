@@ -134,6 +134,10 @@ def test_safe_shell_list_commands_are_rewritten(command: str) -> None:
         "if true; then npm run test; fi",
         "for f in a; do npm run test; done",
         "cd $APP_DIR && git status",
+        "git status && npm run test $NPM_ARGS",
+        "git status && npm run test ${NPM_ARGS}",
+        "cd ~ && git status",
+        "git status && cd ~/repo",
     ],
 )
 def test_unsafe_shell_commands_are_not_wrapped(command: str) -> None:

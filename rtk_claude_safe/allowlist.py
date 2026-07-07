@@ -109,7 +109,7 @@ SCOPED_PATTERNS = _build_claude_candidate_patterns()
 
 _SHELL_PUNCTUATION_CHARS = "|&;()<>"
 _SAFE_SHELL_SEPARATORS = {"&&", "||", ";"}
-_UNSAFE_SHELL_EXPANSIONS = ("\n", "`", "$(", "<(", ">(")
+_UNSAFE_SHELL_EXPANSIONS = ("\n", "`", "$", "<(", ">(")
 _PRESERVABLE_SHELL_LIST_COMMANDS = {"cd", "true", "false", ":"}
 _UNSAFE_PRESERVED_ARG_CHARS = "$`*?[]{};&|<>!"
 _ENV_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
@@ -335,7 +335,7 @@ def _safe_cd_args(args: list[str]) -> bool:
         args = args[1:]
         if not args:
             return True
-    if len(args) != 1 or args[0].startswith("-"):
+    if len(args) != 1 or args[0].startswith(("-", "~")):
         return False
     return not any(char in args[0] for char in _UNSAFE_PRESERVED_ARG_CHARS)
 
