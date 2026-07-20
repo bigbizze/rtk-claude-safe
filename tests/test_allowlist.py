@@ -191,6 +191,7 @@ def test_codex_rewrites_gofmt_write_before_go_test_policy_exception() -> None:
         "gofmt -w ./main.go ../other.go && go test ./...",
         "gofmt -w main.go README.md && go test ./...",
         "gofmt -r 'a -> b' -w main.go && go test ./...",
+        "./gofmt -w main.go && go test ./...",
     ],
 )
 def test_gofmt_policy_exception_stays_narrow(command: str) -> None:
@@ -240,6 +241,7 @@ def test_codex_rewrites_cargo_fmt_before_cargo_validation_policy_exception(
         "cargo fmt && cargo build --workspace",
         "cargo fmt && cargo doc --workspace",
         "cargo fmt && cargo run",
+        "./cargo fmt && cargo test",
     ],
 )
 def test_cargo_fmt_policy_exception_stays_narrow(command: str) -> None:
@@ -286,6 +288,9 @@ def test_safe_shell_list_commands_are_rewritten(command: str) -> None:
         "git status && npm run test ${NPM_ARGS}",
         "cd ~ && git status",
         "git status && cd ~/repo",
+        "npm run test # skip && git status",
+        "./cd app && git status",
+        "npm run test 'a\\' && git status 'x\\'",
     ],
 )
 def test_unsafe_shell_commands_are_not_wrapped(command: str) -> None:

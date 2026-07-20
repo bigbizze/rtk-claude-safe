@@ -119,7 +119,7 @@ def _build_claude_candidate_patterns() -> list[str]:
 # Compatibility name for callers that imported the scoped pattern list.
 SCOPED_PATTERNS = _build_claude_candidate_patterns()
 
-_SHELL_PUNCTUATION_CHARS = "|&;()<>"
+_SHELL_PUNCTUATION_CHARS = "|&;()<>#"
 _UNSAFE_SHELL_EXPANSIONS = ("\n", "`", "$", "<(", ">(")
 _PRESERVABLE_SHELL_LIST_COMMANDS = {"cd", "true", "false", ":"}
 _UNSAFE_PRESERVED_ARG_CHARS = "$`*?[]{};&|<>!"
@@ -339,19 +339,23 @@ def _split_shell_list(command: str) -> tuple[list[str], list[str]] | None:
             escaped = False
             index += 1
             continue
-        if char == "\\":
-            escaped = True
-            index += 1
-            continue
         if quote is not None:
             if char == quote:
                 quote = None
+            elif quote == '"' and char == "\\":
+                escaped = True
+            index += 1
+            continue
+        if char == "\\":
+            escaped = True
             index += 1
             continue
         if char in {"'", '"'}:
             quote = char
             index += 1
             continue
+        if char == "#":
+            return None
         if char == ";":
             if not _append_shell_segment(stripped, segment_start, index, segments):
                 return None
@@ -492,12 +496,14 @@ def _has_unquoted_shell_syntax(command: str) -> bool:
         if escaped:
             escaped = False
             continue
-        if char == "\\":
-            escaped = True
-            continue
         if quote is not None:
             if char == quote:
                 quote = None
+            elif quote == '"' and char == "\\":
+                escaped = True
+            continue
+        if char == "\\":
+            escaped = True
             continue
         if char in {"'", '"'}:
             quote = char
@@ -514,7 +520,7 @@ def _has_env_assignment_prefix(parts: list[str]) -> bool:
 def _can_preserve_shell_list_segment(parts: list[str]) -> bool:
     if not parts or _has_env_assignment_prefix(parts):
         return False
-    command = Path(parts[0]).name.lower()
+    command = parts[0]
     if command not in _PRESERVABLE_SHELL_LIST_COMMANDS:
         return False
     if command == "cd":
@@ -535,7 +541,7 @@ def _safe_cd_args(args: list[str]) -> bool:
 
 
 def _safe_gofmt_write_args(parts: list[str]) -> bool:
-    if len(parts) < 3 or Path(parts[0]).name.lower() != "gofmt":
+    if len(parts) < 3 or parts[0] != "gofmt":
         return False
     if parts[1] != "-w":
         return False
@@ -553,7 +559,7 @@ def _safe_gofmt_path(arg: str) -> bool:
 
 
 def _safe_cargo_fmt_write_args(parts: list[str]) -> bool:
-    if len(parts) < 2 or Path(parts[0]).name.lower() != "cargo":
+    if len(parts) < 2 or parts[0] != "cargo":
         return False
     return parts[1:] in (["fmt"], ["fmt", "--all"])
 
