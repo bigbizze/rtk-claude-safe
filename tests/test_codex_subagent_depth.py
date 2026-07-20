@@ -108,8 +108,8 @@ def _agent_depth(codex_home: Path, agent_id: str) -> int:
     return int(row[0])
 
 
-@pytest.mark.parametrize("max_depth", [0, 1, 2, 3, 4])
-def test_enforces_max_depth_independently_for_depths_0_through_4(tmp_path, max_depth: int) -> None:
+@pytest.mark.parametrize("max_depth", [1, 2, 3, 4])
+def test_enforces_max_depth_independently_for_depths_1_through_4(tmp_path, max_depth: int) -> None:
     codex_home = _codex_home(tmp_path)
     project = tmp_path / "project"
     project.mkdir()
@@ -153,6 +153,20 @@ def test_enforces_max_depth_independently_for_depths_0_through_4(tmp_path, max_d
     assert blocked["decision"] == "block"
     assert f"agents.max_depth={max_depth}" in blocked["reason"]
     assert f"caller_depth={max_depth}" in blocked["reason"]
+
+
+def test_zero_max_depth_is_rejected_like_codex(tmp_path) -> None:
+    codex_home = _codex_home(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    system_config = _system_config(tmp_path)
+    _write_user_depth(codex_home, 0)
+    initialize_subagent_depth_state(codex_home)
+
+    blocked = _run(_pre_payload(project), codex_home, system_config)
+
+    assert blocked is not None
+    assert "agents.max_depth must be between 1" in blocked["reason"]
 
 
 def test_post_tool_use_accepts_json_string_tool_response(tmp_path) -> None:

@@ -61,17 +61,26 @@ def lock_path(codex_home: Path | None = None) -> Path:
     return state_dir(codex_home) / LOCK_NAME
 
 
-def initialize_subagent_depth_state(codex_home: Path | None = None) -> Path:
-    """Create the state database and enable the hook runtime."""
+def initialize_subagent_depth_state(codex_home: Path | None = None, *, enable: bool = True) -> Path:
+    """Create the state database and optionally enable the hook runtime."""
     home = codex_home or default_codex_home()
     state_dir(home).mkdir(parents=True, exist_ok=True)
-    marker = disabled_marker_path(home)
-    if marker.exists():
-        marker.unlink()
     with lifecycle_lock(home, exclusive=True):
         with connect_state(home) as conn:
             initialize_schema(conn)
+        if enable:
+            enable_subagent_depth_state(home)
     return database_path(home)
+
+
+def enable_subagent_depth_state(codex_home: Path | None = None) -> None:
+    """Remove the disabled marker after hook installation succeeds."""
+    home = codex_home or default_codex_home()
+    marker = disabled_marker_path(home)
+    try:
+        marker.unlink()
+    except FileNotFoundError:
+        pass
 
 
 def mark_subagent_depth_disabled(codex_home: Path | None = None) -> Path:
@@ -595,10 +604,10 @@ def _max_depth_from_config(data: dict[str, Any] | None, source: Path) -> PolicyR
     value = agents["max_depth"]
     if isinstance(value, bool) or not isinstance(value, int):
         return PolicyResolution(None, f"{source}: agents.max_depth must be an integer")
-    if value < 0 or value > MAX_DEPTH_MAX:
+    if value < 1 or value > MAX_DEPTH_MAX:
         return PolicyResolution(
             None,
-            f"{source}: agents.max_depth must be between 0 and {MAX_DEPTH_MAX}",
+            f"{source}: agents.max_depth must be between 1 and {MAX_DEPTH_MAX}",
         )
     return PolicyResolution(value, None)
 

@@ -141,8 +141,8 @@ After installing, open Codex CLI, run `/hooks`, and trust the new `rtk-claude-sa
 hooks. The command reports "configured, pending activation" until a new Codex session loads and
 trusts those handlers.
 
-Depth enforcement treats the root conversation as depth 0. With `agents.max_depth = 0`, every
-subagent spawn is blocked. With `agents.max_depth = 1`, only root-created subagents are allowed;
+Depth enforcement treats the root conversation as depth 0. Codex 0.144.6 requires
+`agents.max_depth >= 1`; with `agents.max_depth = 1`, only root-created subagents are allowed, and
 those subagents cannot spawn another subagent. Values 2 and higher allow that many nested spawned
 agent levels. If the key is absent, the hook records ancestry but stays dormant.
 

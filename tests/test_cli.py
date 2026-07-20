@@ -179,6 +179,57 @@ def test_enforce_subagent_depth_command_installs_hooks(monkeypatch, tmp_path, ca
     assert "configured, pending activation" in capsys.readouterr().out
 
 
+def test_enforce_subagent_depth_keeps_disabled_marker_when_hook_patch_fails(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    codex_home = tmp_path / ".codex"
+    marker = codex_home / "rtk-claude-safe" / "subagent-depth.disabled"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("disabled\n", encoding="utf-8")
+    hooks_path = codex_home / "hooks.json"
+    hooks_path.write_text('{"old":true}\n', encoding="utf-8")
+
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setattr(cli.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(cli, "assert_supported_codex_cli", lambda: "codex-cli 0.144.6")
+
+    def fail_patch(path: Path) -> bool:
+        path.write_text('{"new":true}\n', encoding="utf-8")
+        raise OSError("patch failed")
+
+    monkeypatch.setattr(cli, "patch_subagent_depth_hooks", fail_patch)
+
+    assert cli.main(["enforce-subagent-depth"]) == 1
+
+    assert marker.exists()
+    assert marker.read_text(encoding="utf-8") == "disabled\n"
+    assert hooks_path.read_text(encoding="utf-8") == '{"old":true}\n'
+    assert "patch failed" in capsys.readouterr().err
+
+
+def test_enforce_subagent_depth_reports_sqlite_initialization_failure(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    codex_home = tmp_path / ".codex"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setattr(cli.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(cli, "assert_supported_codex_cli", lambda: "codex-cli 0.144.6")
+
+    def fail_initialize(_codex_home: Path, *, enable: bool) -> Path:
+        assert enable is False
+        raise cli.sqlite3.DatabaseError("bad db")
+
+    monkeypatch.setattr(cli, "initialize_subagent_depth_state", fail_initialize)
+
+    assert cli.main(["enforce-subagent-depth"]) == 1
+
+    assert "bad db" in capsys.readouterr().err
+
+
 def test_remove_subagent_depth_enforcement_command_disables_and_removes(
     monkeypatch,
     tmp_path,

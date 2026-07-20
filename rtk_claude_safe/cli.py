@@ -6,6 +6,7 @@ import argparse
 import platform
 import sys
 import os
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from rtk_claude_safe.codex_settings import (
 )
 from rtk_claude_safe.codex_subagent_depth import (
     database_path as subagent_depth_database_path,
+    enable_subagent_depth_state,
     initialize_subagent_depth_state,
     main as subagent_depth_hook_main,
     mark_subagent_depth_disabled,
@@ -224,9 +226,10 @@ def _cmd_enforce_subagent_depth(_args: argparse.Namespace) -> int:
 
     try:
         codex_home.mkdir(parents=True, exist_ok=True)
-        db_path = initialize_subagent_depth_state(codex_home)
+        db_path = initialize_subagent_depth_state(codex_home, enable=False)
         changed = patch_subagent_depth_hooks(hooks_path)
-    except (ValueError, OSError, UnicodeError) as e:
+        enable_subagent_depth_state(codex_home)
+    except (ValueError, OSError, UnicodeError, sqlite3.Error) as e:
         tx.rollback()
         print(f"[rtk-claude-safe] failed to install subagent depth enforcement: {e}", file=sys.stderr)
         return 1
