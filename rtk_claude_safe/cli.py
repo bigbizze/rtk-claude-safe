@@ -19,6 +19,23 @@ from rtk_claude_safe.codex_settings import (
     inspect_codex_config,
     patch_codex_hooks,
 )
+from rtk_claude_safe.codex_subagent_depth import (
+    database_path as subagent_depth_database_path,
+    initialize_subagent_depth_state,
+    main as subagent_depth_hook_main,
+    mark_subagent_depth_disabled,
+    remove_subagent_depth_state,
+    lifecycle_lock as subagent_depth_lifecycle_lock,
+)
+from rtk_claude_safe.codex_subagent_depth_settings import (
+    CodexVersionError,
+    assert_supported_codex_cli,
+    default_codex_home,
+    default_config_path as default_subagent_depth_config_path,
+    default_hooks_path as default_subagent_depth_hooks_path,
+    patch_subagent_depth_hooks,
+    remove_subagent_depth_hooks,
+)
 from rtk_claude_safe.codex_sqlite import (
     CodexSqliteError,
     assert_codex_sessions_closed,
@@ -181,6 +198,78 @@ def _cmd_claude_hook(_args: argparse.Namespace) -> int:
     return claude_hook_main()
 
 
+def _cmd_subagent_depth_hook(_args: argparse.Namespace) -> int:
+    return subagent_depth_hook_main()
+
+
+def _cmd_enforce_subagent_depth(_args: argparse.Namespace) -> int:
+    if platform.system() == "Windows":
+        print(
+            "[rtk-claude-safe] native Windows Codex hooks are not supported",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        codex_version = assert_supported_codex_cli()
+    except CodexVersionError as e:
+        print(f"[rtk-claude-safe] failed to install subagent depth enforcement: {e}", file=sys.stderr)
+        return 1
+
+    codex_home = default_codex_home()
+    hooks_path = default_subagent_depth_hooks_path(codex_home)
+    config_path = default_subagent_depth_config_path(codex_home)
+    tx = _ConfigTransaction()
+    tx.snapshot(hooks_path)
+
+    try:
+        codex_home.mkdir(parents=True, exist_ok=True)
+        db_path = initialize_subagent_depth_state(codex_home)
+        changed = patch_subagent_depth_hooks(hooks_path)
+    except (ValueError, OSError, UnicodeError) as e:
+        tx.rollback()
+        print(f"[rtk-claude-safe] failed to install subagent depth enforcement: {e}", file=sys.stderr)
+        return 1
+
+    if changed:
+        print(f"[rtk-claude-safe] installed Codex subagent depth hooks in {hooks_path}")
+    else:
+        print(f"[rtk-claude-safe] {hooks_path} already has Codex subagent depth hooks")
+    print(f"[rtk-claude-safe] Codex version: {codex_version}")
+    print(f"[rtk-claude-safe] subagent depth state database: {db_path}")
+    print(
+        "[rtk-claude-safe] configured, pending activation; open Codex CLI, run /hooks, "
+        "review and trust the subagent depth hooks."
+    )
+    for warning in inspect_codex_config(config_path):
+        print(f"[rtk-claude-safe] warning: {warning}", file=sys.stderr)
+    return 0
+
+
+def _cmd_remove_subagent_depth_enforcement(_args: argparse.Namespace) -> int:
+    codex_home = default_codex_home()
+    hooks_path = default_subagent_depth_hooks_path(codex_home)
+
+    try:
+        marker = mark_subagent_depth_disabled(codex_home)
+        changed = remove_subagent_depth_hooks(hooks_path)
+        with subagent_depth_lifecycle_lock(codex_home, exclusive=True):
+            remove_subagent_depth_state(codex_home)
+    except (ValueError, OSError, UnicodeError) as e:
+        print(f"[rtk-claude-safe] failed to remove subagent depth enforcement: {e}", file=sys.stderr)
+        return 1
+
+    if changed:
+        print(f"[rtk-claude-safe] removed Codex subagent depth hooks from {hooks_path}")
+    else:
+        print(f"[rtk-claude-safe] no Codex subagent depth hooks found in {hooks_path}")
+    print(f"[rtk-claude-safe] disabled marker retained for already-loaded hooks: {marker}")
+    db_path = subagent_depth_database_path(codex_home)
+    if not db_path.exists():
+        print(f"[rtk-claude-safe] removed subagent depth state database: {db_path}")
+    return 0
+
+
 def _cmd_repair_codex_sqlite(args: argparse.Namespace) -> int:
     database = resolve_database_path(args.database)
     try:
@@ -269,6 +358,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init.set_defaults(func=_cmd_init)
 
+    enforce_depth = sub.add_parser(
+        "enforce-subagent-depth",
+        help="Install Codex hooks that enforce agents.max_depth for spawned subagents.",
+    )
+    enforce_depth.set_defaults(func=_cmd_enforce_subagent_depth)
+
+    remove_depth = sub.add_parser(
+        "remove-subagent-depth-enforcement",
+        help="Remove the managed Codex subagent depth enforcement hooks.",
+    )
+    remove_depth.set_defaults(func=_cmd_remove_subagent_depth_enforcement)
+
     repair = sub.add_parser(
         "repair-codex-sqlite",
         help="Install the Codex SQLite trigger that ignores TRACE, DEBUG, and INFO log rows.",
@@ -316,6 +417,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_codex_hook(argparse.Namespace())
     if argv and argv[0] == "claude-hook":
         return _cmd_claude_hook(argparse.Namespace())
+    if argv and argv[0] == "subagent-depth-hook":
+        return _cmd_subagent_depth_hook(argparse.Namespace())
 
     parser = build_parser()
     args = parser.parse_args(argv)

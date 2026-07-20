@@ -160,6 +160,63 @@ def test_cli_explicit_settings_does_not_touch_default_settings(monkeypatch, tmp_
 def test_codex_hook_is_hidden_from_help() -> None:
     assert "codex-hook" not in cli.build_parser().format_help()
     assert "claude-hook" not in cli.build_parser().format_help()
+    assert "subagent-depth-hook" not in cli.build_parser().format_help()
+
+
+def test_enforce_subagent_depth_command_installs_hooks(monkeypatch, tmp_path, capsys) -> None:
+    codex_home = tmp_path / ".codex"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setattr(cli.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(cli, "inspect_codex_config", lambda _path: [])
+    monkeypatch.setattr(cli, "assert_supported_codex_cli", lambda: "codex-cli 0.144.6")
+
+    assert cli.main(["enforce-subagent-depth"]) == 0
+
+    hooks_path = codex_home / "hooks.json"
+    assert hooks_path.exists()
+    assert (codex_home / "rtk-claude-safe" / "subagent-depth.sqlite").exists()
+    assert not (codex_home / "rtk-claude-safe" / "subagent-depth.disabled").exists()
+    assert "configured, pending activation" in capsys.readouterr().out
+
+
+def test_remove_subagent_depth_enforcement_command_disables_and_removes(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    codex_home = tmp_path / ".codex"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setattr(cli.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(cli, "inspect_codex_config", lambda _path: [])
+    monkeypatch.setattr(cli, "assert_supported_codex_cli", lambda: "codex-cli 0.144.6")
+
+    assert cli.main(["enforce-subagent-depth"]) == 0
+    assert cli.main(["remove-subagent-depth-enforcement"]) == 0
+
+    state_dir = codex_home / "rtk-claude-safe"
+    assert (state_dir / "subagent-depth.disabled").exists()
+    assert not (state_dir / "subagent-depth.sqlite").exists()
+    assert "disabled marker retained" in capsys.readouterr().out
+
+
+def test_enforce_subagent_depth_command_rejects_unsupported_codex(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    codex_home = tmp_path / ".codex"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setattr(cli.platform, "system", lambda: "Linux")
+
+    def unsupported() -> str:
+        raise cli.CodexVersionError("unsupported version")
+
+    monkeypatch.setattr(cli, "assert_supported_codex_cli", unsupported)
+
+    assert cli.main(["enforce-subagent-depth"]) == 1
+
+    assert "unsupported version" in capsys.readouterr().err
+    assert not codex_home.exists()
 
 
 def test_repair_codex_sqlite_command_installs_trigger(monkeypatch, tmp_path, capsys) -> None:
@@ -257,3 +314,9 @@ def test_hidden_claude_hook_subcommand_dispatches(monkeypatch) -> None:
     monkeypatch.setattr(cli, "claude_hook_main", lambda: 0)
 
     assert cli.main(["claude-hook"]) == 0
+
+
+def test_hidden_subagent_depth_hook_subcommand_dispatches(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "subagent_depth_hook_main", lambda: 0)
+
+    assert cli.main(["subagent-depth-hook"]) == 0
