@@ -74,6 +74,10 @@ def resolve_database_path(
 
 def _sqlite_home_to_database_path(value: str) -> Path:
     path = Path(value).expanduser()
+    if path.is_dir():
+        return path / "logs_2.sqlite"
+    if path.is_file():
+        return path
     if path.name == "logs_2.sqlite" or path.suffix.lower() in {".sqlite", ".sqlite3", ".db"}:
         return path
     return path / "logs_2.sqlite"
@@ -342,8 +346,9 @@ def _file_size(path: Path) -> int:
 
 
 def _ensure_vacuum_space(database: Path, *, backup: bool, active_bytes: int) -> None:
-    multiplier = 2 if backup else 1
-    required = active_bytes * multiplier
+    vacuum_bytes = active_bytes * 2
+    backup_bytes = active_bytes if backup else 0
+    required = vacuum_bytes + backup_bytes
     free = shutil.disk_usage(database.parent).free
     if free < required:
         raise CodexSqliteError(

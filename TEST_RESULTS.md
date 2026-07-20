@@ -30,7 +30,7 @@ RTK `v0.42.4` and requires `rtk >= 0.42.4` for hook config mutation.
 
 - `uv run --extra dev pytest -q`
   - Result: passed
-  - Coverage: 249 tests
+  - Coverage: 251 tests
 - `python3 -m compileall rtk_claude_safe`
   - Result: passed
 - `git diff --check`

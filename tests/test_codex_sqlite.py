@@ -36,6 +36,8 @@ def test_resolve_database_path_precedence(tmp_path, monkeypatch) -> None:
         "rtk_claude_safe.codex_sqlite.DEFAULT_CODEX_SQLITE_PATH",
         tmp_path / "default.sqlite",
     )
+    extensionless_db = tmp_path / "codex-log"
+    extensionless_db.write_bytes(b"sqlite")
 
     assert resolve_database_path(tmp_path / "explicit.sqlite") == tmp_path / "explicit.sqlite"
     assert resolve_database_path(env={"CODEX_SQLITE_HOME": str(tmp_path / "sqlite-home")}) == (
@@ -43,6 +45,9 @@ def test_resolve_database_path_precedence(tmp_path, monkeypatch) -> None:
     )
     assert resolve_database_path(env={"CODEX_SQLITE_HOME": str(tmp_path / "custom.sqlite")}) == (
         tmp_path / "custom.sqlite"
+    )
+    assert resolve_database_path(env={"CODEX_SQLITE_HOME": str(extensionless_db)}) == (
+        extensionless_db
     )
     assert resolve_database_path(env={"CODEX_HOME": str(tmp_path / "codex-home")}) == (
         tmp_path / "codex-home" / "logs_2.sqlite"
@@ -221,3 +226,40 @@ def test_vacuum_codex_logs_free_space_check_counts_wal_bytes(
 
     with pytest.raises(CodexSqliteError, match="not enough free disk space"):
         vacuum_codex_logs(db)
+
+
+def test_vacuum_space_check_requires_two_active_copies(tmp_path, monkeypatch) -> None:
+    free_space = {"bytes": 1999}
+
+    class Usage:
+        @property
+        def free(self) -> int:
+            return free_space["bytes"]
+
+    monkeypatch.setattr(codex_sqlite.shutil, "disk_usage", lambda _path: Usage())
+
+    with pytest.raises(CodexSqliteError, match="not enough free disk space"):
+        codex_sqlite._ensure_vacuum_space(tmp_path, backup=False, active_bytes=1000)
+
+    free_space["bytes"] = 2000
+    codex_sqlite._ensure_vacuum_space(tmp_path, backup=False, active_bytes=1000)
+
+
+def test_vacuum_space_check_requires_backup_plus_two_active_copies(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    free_space = {"bytes": 2999}
+
+    class Usage:
+        @property
+        def free(self) -> int:
+            return free_space["bytes"]
+
+    monkeypatch.setattr(codex_sqlite.shutil, "disk_usage", lambda _path: Usage())
+
+    with pytest.raises(CodexSqliteError, match="not enough free disk space"):
+        codex_sqlite._ensure_vacuum_space(tmp_path, backup=True, active_bytes=1000)
+
+    free_space["bytes"] = 3000
+    codex_sqlite._ensure_vacuum_space(tmp_path, backup=True, active_bytes=1000)
