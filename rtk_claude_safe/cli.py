@@ -204,6 +204,13 @@ def _cmd_subagent_depth_hook(_args: argparse.Namespace) -> int:
     return subagent_depth_hook_main()
 
 
+def _safe_codex_config_warnings(path: Path) -> list[str]:
+    try:
+        return inspect_codex_config(path)
+    except (OSError, UnicodeError) as e:
+        return [f"could not inspect {path}: {e}"]
+
+
 def _cmd_enforce_subagent_depth(_args: argparse.Namespace) -> int:
     if platform.system() == "Windows":
         print(
@@ -244,7 +251,7 @@ def _cmd_enforce_subagent_depth(_args: argparse.Namespace) -> int:
         "[rtk-claude-safe] configured, pending activation; open Codex CLI, run /hooks, "
         "review and trust the subagent depth hooks."
     )
-    for warning in inspect_codex_config(config_path):
+    for warning in _safe_codex_config_warnings(config_path):
         print(f"[rtk-claude-safe] warning: {warning}", file=sys.stderr)
     return 0
 

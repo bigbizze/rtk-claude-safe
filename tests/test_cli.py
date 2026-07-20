@@ -230,6 +230,31 @@ def test_enforce_subagent_depth_reports_sqlite_initialization_failure(
     assert "bad db" in capsys.readouterr().err
 
 
+def test_enforce_subagent_depth_warns_when_config_inspection_fails(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    codex_home = tmp_path / ".codex"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setattr(cli.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(cli, "assert_supported_codex_cli", lambda: "codex-cli 0.144.6")
+
+    def fail_inspect(_path: Path) -> list[str]:
+        raise UnicodeError("bad config encoding")
+
+    monkeypatch.setattr(cli, "inspect_codex_config", fail_inspect)
+
+    assert cli.main(["enforce-subagent-depth"]) == 0
+
+    assert (codex_home / "hooks.json").exists()
+    assert (codex_home / "rtk-claude-safe" / "subagent-depth.sqlite").exists()
+    captured = capsys.readouterr()
+    assert "configured, pending activation" in captured.out
+    assert "could not inspect" in captured.err
+    assert "bad config encoding" in captured.err
+
+
 def test_remove_subagent_depth_enforcement_command_disables_and_removes(
     monkeypatch,
     tmp_path,
