@@ -115,6 +115,33 @@ hook, and the Python hook executable applies the allowlist internally. The hook 
 payloads, non-Bash tools, complex shell commands, excluded commands, and already-wrapped `rtk ...`
 commands emit no output so Codex runs the original command.
 
+### Codex SQLite Log Maintenance
+
+`init` does not modify Codex's SQLite log database. The log repair commands are explicit because
+they mutate `~/.codex/logs_2.sqlite` and should only run after all Codex CLI sessions are closed.
+Each command asks the user to close Codex, requires an exact `Y` confirmation, checks the process
+list for native Codex and Node wrapper processes, and checks again immediately before writing.
+
+The default database path is resolved from `--database`, then `CODEX_SQLITE_HOME`, then
+`CODEX_HOME`, then `~/.codex/logs_2.sqlite`. `CODEX_SQLITE_HOME` may point either at the database
+file or at the directory containing `logs_2.sqlite`. The commands fail if the database does not
+already exist; they do not create a replacement database. Native Windows Codex SQLite maintenance
+is not supported.
+
+Available maintenance commands:
+
+- `rtk-claude-safe repair-codex-sqlite` installs a managed `BEFORE INSERT` trigger named
+  `codex_ignore_low_level_logs` that ignores `TRACE`, `DEBUG`, and `INFO` rows before SQLite writes
+  them. Re-running the command is idempotent when the exact managed trigger is already present. A
+  same-name trigger with different SQL is treated as a conflict and is left untouched.
+- `rtk-claude-safe revert-codex-sqlite-repair` removes only the exact managed trigger. If the
+  trigger is absent, the command succeeds without changing the database. A same-name trigger with
+  different SQL is left untouched.
+- `rtk-claude-safe vacuum-codex-sqlite` runs `PRAGMA wal_checkpoint(TRUNCATE)`, `VACUUM`, and
+  `PRAGMA optimize`, then reports database and WAL sizes before and after. It does not require the
+  repair trigger to be installed. Add `--backup` to write an adjacent timestamped SQLite backup
+  before maintenance; backups are optional and are not deleted if a later maintenance step fails.
+
 ### Recommended Companion Config
 
 The installer enforces `rtk >= 0.42.4` for mutations, but RTK's own config can still provide a
@@ -141,6 +168,7 @@ rtk_claude_safe/
 ├── cli.py             # argparse entry point
 ├── codex_hook.py      # Codex stdin/stdout PreToolUse hook handler
 ├── codex_settings.py  # idempotent Codex hooks.json patcher
+├── codex_sqlite.py    # guarded Codex logs_2.sqlite repair, revert, and vacuum commands
 ├── hook_command.py    # stable hook command path construction
 ├── hooks.py           # compatibility shim
 ├── installer.py       # OS/arch detection, GitHub release download, binary extraction
