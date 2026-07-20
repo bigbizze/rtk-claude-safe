@@ -19,6 +19,16 @@ from rtk_claude_safe.codex_settings import (
     inspect_codex_config,
     patch_codex_hooks,
 )
+from rtk_claude_safe.codex_sqlite import (
+    CodexSqliteError,
+    assert_codex_sessions_closed,
+    confirm_codex_sessions_closed,
+    format_bytes,
+    install_low_level_log_trigger,
+    resolve_database_path,
+    revert_low_level_log_trigger,
+    vacuum_codex_logs,
+)
 from rtk_claude_safe.installer import (
     DEFAULT_INSTALL_DIR,
     InstallError,
@@ -171,6 +181,67 @@ def _cmd_claude_hook(_args: argparse.Namespace) -> int:
     return claude_hook_main()
 
 
+def _cmd_repair_codex_sqlite(args: argparse.Namespace) -> int:
+    database = resolve_database_path(args.database)
+    try:
+        confirm_codex_sessions_closed()
+        assert_codex_sessions_closed()
+        changed = install_low_level_log_trigger(database)
+    except CodexSqliteError as e:
+        print(f"[rtk-claude-safe] failed to repair Codex SQLite logs: {e}", file=sys.stderr)
+        return 1
+
+    if changed:
+        print(f"[rtk-claude-safe] installed Codex SQLite low-level log trigger in {database}")
+    else:
+        print(f"[rtk-claude-safe] Codex SQLite low-level log trigger is already installed in {database}")
+    return 0
+
+
+def _cmd_revert_codex_sqlite_repair(args: argparse.Namespace) -> int:
+    database = resolve_database_path(args.database)
+    try:
+        confirm_codex_sessions_closed()
+        assert_codex_sessions_closed()
+        changed = revert_low_level_log_trigger(database)
+    except CodexSqliteError as e:
+        print(f"[rtk-claude-safe] failed to revert Codex SQLite repair: {e}", file=sys.stderr)
+        return 1
+
+    if changed:
+        print(f"[rtk-claude-safe] removed Codex SQLite low-level log trigger from {database}")
+    else:
+        print(f"[rtk-claude-safe] Codex SQLite low-level log trigger was not installed in {database}")
+    return 0
+
+
+def _cmd_vacuum_codex_sqlite(args: argparse.Namespace) -> int:
+    database = resolve_database_path(args.database)
+    try:
+        confirm_codex_sessions_closed()
+        assert_codex_sessions_closed()
+        result = vacuum_codex_logs(database, backup=args.backup)
+    except CodexSqliteError as e:
+        print(f"[rtk-claude-safe] failed to vacuum Codex SQLite logs: {e}", file=sys.stderr)
+        return 1
+
+    print(
+        "[rtk-claude-safe] vacuumed Codex SQLite logs: "
+        f"{result.database} {format_bytes(result.before_bytes)} -> {format_bytes(result.after_bytes)}"
+    )
+    print(
+        "[rtk-claude-safe] WAL size: "
+        f"{format_bytes(result.wal_before_bytes)} -> {format_bytes(result.wal_after_bytes)}"
+    )
+    print(
+        "[rtk-claude-safe] checkpoint: "
+        f"busy={result.checkpoint_busy} log={result.checkpoint_log} checkpointed={result.checkpointed}"
+    )
+    if result.backup is not None:
+        print(f"[rtk-claude-safe] backup written: {result.backup}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="rtk-claude-safe",
@@ -197,6 +268,44 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     init.set_defaults(func=_cmd_init)
+
+    repair = sub.add_parser(
+        "repair-codex-sqlite",
+        help="Install the Codex SQLite trigger that ignores TRACE, DEBUG, and INFO log rows.",
+    )
+    repair.add_argument(
+        "--database",
+        default=None,
+        help="Explicit Codex logs_2.sqlite path (default: CODEX_SQLITE_HOME, CODEX_HOME, then ~/.codex).",
+    )
+    repair.set_defaults(func=_cmd_repair_codex_sqlite)
+
+    revert = sub.add_parser(
+        "revert-codex-sqlite-repair",
+        help="Remove the managed Codex SQLite low-level log trigger.",
+    )
+    revert.add_argument(
+        "--database",
+        default=None,
+        help="Explicit Codex logs_2.sqlite path (default: CODEX_SQLITE_HOME, CODEX_HOME, then ~/.codex).",
+    )
+    revert.set_defaults(func=_cmd_revert_codex_sqlite_repair)
+
+    vacuum = sub.add_parser(
+        "vacuum-codex-sqlite",
+        help="Run WAL checkpoint truncate, VACUUM, and PRAGMA optimize on Codex logs.",
+    )
+    vacuum.add_argument(
+        "--database",
+        default=None,
+        help="Explicit Codex logs_2.sqlite path (default: CODEX_SQLITE_HOME, CODEX_HOME, then ~/.codex).",
+    )
+    vacuum.add_argument(
+        "--backup",
+        action="store_true",
+        help="Write an adjacent timestamped SQLite backup before maintenance.",
+    )
+    vacuum.set_defaults(func=_cmd_vacuum_codex_sqlite)
 
     return parser
 

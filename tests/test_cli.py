@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from rtk_claude_safe import cli
+from rtk_claude_safe.codex_sqlite import VacuumResult
 
 
 def _patch_cli_paths(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
@@ -159,6 +160,91 @@ def test_cli_explicit_settings_does_not_touch_default_settings(monkeypatch, tmp_
 def test_codex_hook_is_hidden_from_help() -> None:
     assert "codex-hook" not in cli.build_parser().format_help()
     assert "claude-hook" not in cli.build_parser().format_help()
+
+
+def test_repair_codex_sqlite_command_installs_trigger(monkeypatch, tmp_path, capsys) -> None:
+    db = tmp_path / "logs_2.sqlite"
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(cli, "confirm_codex_sessions_closed", lambda: calls.append(("confirm", None)))
+    monkeypatch.setattr(cli, "assert_codex_sessions_closed", lambda: calls.append(("assert", None)))
+
+    def install(database: Path) -> bool:
+        calls.append(("install", database))
+        return True
+
+    monkeypatch.setattr(cli, "install_low_level_log_trigger", install)
+
+    assert cli.main(["repair-codex-sqlite", "--database", str(db)]) == 0
+
+    assert calls == [("confirm", None), ("assert", None), ("install", db)]
+    assert "installed Codex SQLite low-level log trigger" in capsys.readouterr().out
+
+
+def test_repair_codex_sqlite_command_reports_failure(monkeypatch, tmp_path, capsys) -> None:
+    db = tmp_path / "logs_2.sqlite"
+    monkeypatch.setattr(cli, "confirm_codex_sessions_closed", lambda: None)
+    monkeypatch.setattr(cli, "assert_codex_sessions_closed", lambda: None)
+    monkeypatch.setattr(
+        cli,
+        "install_low_level_log_trigger",
+        lambda _database: (_ for _ in ()).throw(cli.CodexSqliteError("bad db")),
+    )
+
+    assert cli.main(["repair-codex-sqlite", "--database", str(db)]) == 1
+
+    assert "bad db" in capsys.readouterr().err
+
+
+def test_revert_codex_sqlite_repair_command_removes_trigger(monkeypatch, tmp_path, capsys) -> None:
+    db = tmp_path / "logs_2.sqlite"
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(cli, "confirm_codex_sessions_closed", lambda: calls.append(("confirm", None)))
+    monkeypatch.setattr(cli, "assert_codex_sessions_closed", lambda: calls.append(("assert", None)))
+
+    def revert(database: Path) -> bool:
+        calls.append(("revert", database))
+        return True
+
+    monkeypatch.setattr(cli, "revert_low_level_log_trigger", revert)
+
+    assert cli.main(["revert-codex-sqlite-repair", "--database", str(db)]) == 0
+
+    assert calls == [("confirm", None), ("assert", None), ("revert", db)]
+    assert "removed Codex SQLite low-level log trigger" in capsys.readouterr().out
+
+
+def test_vacuum_codex_sqlite_command_passes_backup_flag(monkeypatch, tmp_path, capsys) -> None:
+    db = tmp_path / "logs_2.sqlite"
+    backup = tmp_path / "logs_2.sqlite.backup-20260720-103000"
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(cli, "confirm_codex_sessions_closed", lambda: calls.append(("confirm", None)))
+    monkeypatch.setattr(cli, "assert_codex_sessions_closed", lambda: calls.append(("assert", None)))
+
+    def vacuum(database: Path, *, backup: bool) -> object:
+        calls.append(("vacuum", (database, backup)))
+        return VacuumResult(
+            database=database,
+            backup=tmp_path / "logs_2.sqlite.backup-20260720-103000" if backup else None,
+            before_bytes=1024,
+            after_bytes=512,
+            wal_before_bytes=256,
+            wal_after_bytes=0,
+            checkpoint_busy=0,
+            checkpoint_log=1,
+            checkpointed=1,
+        )
+
+    monkeypatch.setattr(cli, "vacuum_codex_logs", vacuum)
+
+    assert cli.main(["vacuum-codex-sqlite", "--database", str(db), "--backup"]) == 0
+
+    assert calls == [("confirm", None), ("assert", None), ("vacuum", (db, True))]
+    output = capsys.readouterr().out
+    assert "1.0 KiB -> 512 B" in output
+    assert str(backup) in output
 
 
 def test_hidden_codex_hook_subcommand_dispatches(monkeypatch) -> None:
