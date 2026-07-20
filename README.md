@@ -52,8 +52,8 @@ These are representative upstream bug classes that shape the default policy:
   `rtk npx ...`.
 - **`git diff` for code review is lossy by design.** rtk's diff condenser drops content that
   matters for review. (#1313 truncation class, #1486 piped corruption.) The classifier allows
-  only `git diff --stat` and rejects `--name-only`, bare `git diff`, and machine-readable diff
-  forms.
+  only narrow orientation checks such as `git diff --stat` and `git diff --check`, and rejects
+  pathspecs, revisions, `--name-only`, bare `git diff`, and machine-readable diff forms.
 - **`playwright test` strips DOM/locator/call-log on failure.** (Issue #690 — the rtk README
   also recommends excluding it.) **Not in the allowlist.**
 - **Watch/dev/server commands should not be captured.** Long-running commands can buffer or
@@ -62,10 +62,10 @@ These are representative upstream bug classes that shape the default policy:
 
 The rewrite policy itself — defined in `rtk_claude_safe/allowlist.py` — is a parsed-command
 classifier, not a raw wildcard list. It covers safe cargo/test/lint/typecheck/build commands,
-named npm/pnpm scripts, selected `npx` tools, selected Prisma commands (`generate`, `db push`, and
-`migrate dev`), tightly-scoped git orientation commands, safe gh list/view commands except
-comment-fetching modes, read-only pip inventory commands, and a few small utilities (`tree`, `wc`,
-`env`).
+named npm/pnpm scripts, exact pnpm validation shorthands and package-filtered pnpm validation,
+selected `npx` tools, selected Prisma commands (`generate`, `db push`, and `migrate dev`),
+tightly-scoped git orientation commands, safe gh list/view commands except comment-fetching modes,
+read-only pip inventory commands, and a few small utilities (`tree`, `wc`, `env`).
 
 ### What `rtk-claude-safe init` does
 
@@ -80,9 +80,11 @@ comment-fetching modes, read-only pip inventory commands, and a few small utilit
    `~/.local/bin/rtk`. The downloaded binary must be reachable on `PATH` before config is patched.
 3. **Patch Claude Code when present.** Finds or creates the global `PreToolUse` matcher groups,
    removes older RTK-managed hooks, and adds the current scoped candidate list once. Those scoped
-   hooks call `rtk-claude-safe claude-hook`, which rejects complex or uncertain shell commands and
-   emits direct `updatedInput.command` rewrites. Idempotent — running again is a no-op if the scoped
-   hooks are already current. Other user hooks under the same matcher are preserved.
+   hooks call `rtk-claude-safe claude-hook`, which rejects unsupported or uncertain shell syntax and
+   emits direct `updatedInput.command` rewrites. Top-level `&&`, `||`, and `;` chains are classified
+   segment by segment, so a command such as `cd app && npm run test` becomes
+   `cd app && rtk npm run test`. Idempotent — running again is a no-op if the scoped hooks are
+   already current. Other user hooks under the same matcher are preserved.
 4. **Patch Codex when present.** Creates or updates `~/.codex/hooks.json` with one `^Bash$`
    `PreToolUse` command hook that calls `rtk-claude-safe codex-hook`. Other hook events, matcher
    groups, and user hooks are preserved.
@@ -112,8 +114,17 @@ Not supported in this release:
 
 Codex matchers apply to tool names, not shell command strings. That means Codex gets one `^Bash$`
 hook, and the Python hook executable applies the allowlist internally. The hook fails open: invalid
-payloads, non-Bash tools, complex shell commands, excluded commands, and already-wrapped `rtk ...`
-commands emit no output so Codex runs the original command.
+payloads, non-Bash tools, unsupported shell syntax, excluded commands, and already-wrapped
+`rtk ...` commands emit no output so Codex runs the original command.
+Top-level `&&`, `||`, and `;` shell lists are supported when at least one segment is allowlisted
+and every other segment is an explicitly neutral preserved command such as `cd app`; unsupported
+shell syntax such as pipes, redirects, backgrounding, grouping, and substitutions still fails open.
+Codex also has a named narrow-exception contract for commands that are acceptable to auto-allow as
+part of a rewritten shell list even though they are not RTK-wrapped themselves. Current exceptions
+include `gofmt -w <explicit .go files> && go test ...`, which rewrites only the test segment, for
+example `gofmt -w main.go git.go && rtk go test ./...`; and `cargo fmt` or `cargo fmt --all`
+immediately before `cargo test`, `cargo check`, or `cargo clippy`, which rewrites only the Cargo
+validation segment.
 
 ### Codex SQLite Log Maintenance
 

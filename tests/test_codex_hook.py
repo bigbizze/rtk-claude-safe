@@ -45,6 +45,93 @@ def test_codex_hook_uses_mapped_rewrite_command() -> None:
     }
 
 
+def test_codex_hook_rewrites_allowlisted_segments_in_shell_list() -> None:
+    rc, output = _run_hook(
+        {"tool_name": "Bash", "tool_input": {"command": "cd app && npm run test && git status"}}
+    )
+
+    assert rc == 0
+    assert json.loads(output)["hookSpecificOutput"]["updatedInput"] == {
+        "command": "cd app && rtk npm run test && rtk git status",
+    }
+
+
+def test_codex_hook_allows_gofmt_policy_exception_before_go_test() -> None:
+    rc, output = _run_hook(
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "gofmt -w main.go git.go && go test ./..."},
+        }
+    )
+
+    assert rc == 0
+    assert json.loads(output) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {"command": "gofmt -w main.go git.go && rtk go test ./..."},
+        }
+    }
+
+
+def test_codex_hook_allows_cargo_fmt_policy_exception_before_cargo_validation() -> None:
+    rc, output = _run_hook(
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "cargo fmt --all && cargo clippy -q --workspace"},
+        }
+    )
+
+    assert rc == 0
+    assert json.loads(output) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {"command": "cargo fmt --all && rtk cargo clippy -q --workspace"},
+        }
+    }
+
+
+def test_codex_hook_rewrites_cargo_fmt_check_before_git_diff_check() -> None:
+    rc, output = _run_hook(
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "cargo fmt --check && git diff --check"},
+        }
+    )
+
+    assert rc == 0
+    assert json.loads(output) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {
+                "command": "rtk cargo fmt --check && rtk git diff --check",
+            },
+        }
+    }
+
+
+def test_codex_hook_rewrites_filtered_pnpm_validation() -> None:
+    rc, output = _run_hook(
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "pnpm --filter @kernel-web-app/persistence test"},
+        }
+    )
+
+    assert rc == 0
+    assert json.loads(output) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {
+                "command": "rtk pnpm --filter @kernel-web-app/persistence test",
+            },
+        }
+    }
+
+
 def test_codex_hook_emits_nothing_for_non_allowlisted_command() -> None:
     rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "ls"}})
 
@@ -62,7 +149,7 @@ def test_codex_hook_does_not_probe_rtk_for_fail_open_inputs(monkeypatch) -> None
         "{not json",
         {"tool_name": "apply_patch", "tool_input": {"command": "git status"}},
         {"tool_name": "Bash", "tool_input": {"command": "ls"}},
-        {"tool_name": "Bash", "tool_input": {"command": "git status && git diff --stat"}},
+        {"tool_name": "Bash", "tool_input": {"command": "git status | cat"}},
         {"tool_name": "Bash", "tool_input": {"command": "rtk git status"}},
     ]:
         rc, output = _run_hook(payload)
@@ -84,9 +171,9 @@ def test_codex_hook_emits_nothing_for_invalid_json() -> None:
     assert output == ""
 
 
-def test_codex_hook_emits_nothing_for_complex_command() -> None:
+def test_codex_hook_emits_nothing_for_unsafe_shell_command() -> None:
     rc, output = _run_hook(
-        {"tool_name": "Bash", "tool_input": {"command": "git status && git diff --stat"}}
+        {"tool_name": "Bash", "tool_input": {"command": "git status | cat"}}
     )
 
     assert rc == 0

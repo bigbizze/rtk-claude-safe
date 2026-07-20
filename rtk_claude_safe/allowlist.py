@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 Agent = Literal["claude", "codex"]
 
@@ -44,6 +45,10 @@ CANDIDATE_PATTERNS: list[str] = [
     "pnpm test*",
     "pnpm lint*",
     "pnpm build*",
+    "pnpm typecheck*",
+    "pnpm check*",
+    "pnpm boundaries*",
+    "pnpm --filter *",
     "pnpm list*",
     "pnpm outdated*",
     "pnpm exec tsc*",
@@ -77,6 +82,13 @@ CANDIDATE_PATTERNS: list[str] = [
     "git stash list*",
     "git worktree list*",
     "git diff --stat*",
+    "git diff --check*",
+    "git diff --cached --stat*",
+    "git diff --stat --cached*",
+    "git rev-parse HEAD*",
+    "git branch --show-current*",
+    "git branch -vv*",
+    "git branch --list*",
     # gh
     "gh pr list*",
     "gh pr view*",
@@ -97,10 +109,20 @@ CANDIDATE_PATTERNS: list[str] = [
     "pip show*",
 ]
 
-# Compatibility name for callers that imported the original pattern list.
-SCOPED_PATTERNS = CANDIDATE_PATTERNS
+def _build_claude_candidate_patterns() -> list[str]:
+    patterns = list(CANDIDATE_PATTERNS)
+    for separator in ("&&", "||", ";"):
+        patterns.extend(f"*{separator}*{pattern}" for pattern in CANDIDATE_PATTERNS)
+    return patterns
 
-_COMPLEX_SHELL_TOKENS = ("|", ">", "<", ";", "&", "&&", "||", "\n", "`", "$(", "<(", ">(")
+
+# Compatibility name for callers that imported the scoped pattern list.
+SCOPED_PATTERNS = _build_claude_candidate_patterns()
+
+_SHELL_PUNCTUATION_CHARS = "|&;()<>#"
+_UNSAFE_SHELL_EXPANSIONS = ("\n", "`", "$", "<(", ">(")
+_PRESERVABLE_SHELL_LIST_COMMANDS = {"cd", "true", "false", ":"}
+_UNSAFE_PRESERVED_ARG_CHARS = "$`*?[]{};&|<>!"
 _ENV_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _MACHINE_OUTPUT_FLAGS = {
     "--json",
@@ -163,16 +185,87 @@ _MACHINE_REPORT_PREFIXES = (
 _WATCH_FLAGS = {"-w", "--watch", "--watch-all", "--watchAll"}
 _SERVER_SCRIPT_WORDS = {"dev", "start", "serve", "server", "preview", "storybook", "watch"}
 _SAFE_SCRIPT_ROOTS = {"test", "lint", "build", "typecheck", "check", "format:check"}
+_SAFE_PNPM_DIRECT_SCRIPTS = {"test", "lint", "build", "typecheck", "boundaries"}
+_SAFE_PNPM_FILTERED_SCRIPTS = {"typecheck", "test", "build"}
+_PACKAGE_NAME_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+@dataclass(frozen=True)
+class ShellListPolicyException:
+    """Narrow opt-in exception for preserving a non-RTK segment in a shell list."""
+
+    name: str
+    agents: frozenset[Agent]
+    can_preserve: Callable[[list[str], list[str], list[str], list[str]], bool]
+
+
+def _can_preserve_gofmt_before_go_test(
+    parts: list[str],
+    _following_rewrites: list[str],
+    remaining_segments: list[str],
+    remaining_separators: list[str],
+) -> bool:
+    if not _safe_gofmt_write_args(parts):
+        return False
+    if not remaining_segments or not remaining_separators or remaining_separators[0] != "&&":
+        return False
+    next_parts = _split_command(remaining_segments[0])
+    if not next_parts:
+        return False
+    next_rewrite = _rewrite_segment(next_parts, "codex")
+    return next_rewrite is not None and next_rewrite.startswith("rtk go test")
+
+
+def _can_preserve_cargo_fmt_before_cargo_validation(
+    parts: list[str],
+    _following_rewrites: list[str],
+    remaining_segments: list[str],
+    remaining_separators: list[str],
+) -> bool:
+    if not _safe_cargo_fmt_write_args(parts):
+        return False
+    if not remaining_segments or not remaining_separators or remaining_separators[0] != "&&":
+        return False
+    next_parts = _split_command(remaining_segments[0])
+    if not next_parts:
+        return False
+    next_rewrite = _rewrite_segment(next_parts, "codex")
+    return (
+        next_rewrite is not None
+        and len(next_parts) > 1
+        and Path(next_parts[0]).name.lower() == "cargo"
+        and next_parts[1] in {"test", "check", "clippy"}
+    )
+
+
+CODEX_SHELL_LIST_POLICY_EXCEPTIONS: tuple[ShellListPolicyException, ...] = (
+    ShellListPolicyException(
+        name="gofmt-write-before-go-test",
+        agents=frozenset({"codex"}),
+        can_preserve=_can_preserve_gofmt_before_go_test,
+    ),
+    ShellListPolicyException(
+        name="cargo-fmt-before-cargo-validation",
+        agents=frozenset({"codex"}),
+        can_preserve=_can_preserve_cargo_fmt_before_cargo_validation,
+    ),
+)
 
 
 def is_complex_shell_command(command: str) -> bool:
-    """Return True when a command contains syntax we should not rewrite."""
+    """Return True when a command contains shell syntax beyond one simple command."""
     stripped = command.strip()
     if not stripped:
         return False
     if _ENV_PREFIX_RE.match(stripped):
         return True
-    return any(token in stripped for token in _COMPLEX_SHELL_TOKENS)
+    if _has_unsafe_shell_expansion(stripped):
+        return True
+    shell_list = _split_shell_list(stripped)
+    if shell_list is None:
+        return _has_unquoted_shell_syntax(stripped)
+    _segments, separators = shell_list
+    return bool(separators)
 
 
 def is_already_rtk_wrapped(command: str) -> bool:
@@ -211,24 +304,280 @@ def should_wrap_command(command: str) -> bool:
 
 def rewrite_command_for_agent(command: str, agent: Agent = "codex") -> str | None:
     """Return the concrete RTK rewrite for an agent, or None to fail open."""
-    parts = _split_command(command)
+    if _has_unsafe_shell_expansion(command):
+        return None
+
+    shell_list = _split_shell_list(command)
+    if shell_list is None:
+        return None
+
+    segments, separators = shell_list
+    if not separators:
+        parts = _split_command(segments[0])
+        if not parts:
+            return None
+        return _rewrite_segment(parts, agent)
+
+    return _rewrite_shell_list(segments, separators, agent)
+
+
+def _split_shell_list(command: str) -> tuple[list[str], list[str]] | None:
+    stripped = command.strip()
+    if not stripped:
+        return None
+
+    segments: list[str] = []
+    separators: list[str] = []
+    quote: str | None = None
+    escaped = False
+    segment_start = 0
+    index = 0
+
+    while index < len(stripped):
+        char = stripped[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if quote is not None:
+            if char == quote:
+                quote = None
+            elif quote == '"' and char == "\\":
+                escaped = True
+            index += 1
+            continue
+        if char == "\\":
+            escaped = True
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            index += 1
+            continue
+        if char == "#":
+            return None
+        if char == ";":
+            if not _append_shell_segment(stripped, segment_start, index, segments):
+                return None
+            separators.append(";")
+            segment_start = index + 1
+            index += 1
+            continue
+        if char == "&":
+            if index + 1 < len(stripped) and stripped[index + 1] == "&":
+                if index + 2 < len(stripped) and stripped[index + 2] == "&":
+                    return None
+                if not _append_shell_segment(stripped, segment_start, index, segments):
+                    return None
+                separators.append("&&")
+                segment_start = index + 2
+                index += 2
+                continue
+            return None
+        if char == "|":
+            if index + 1 < len(stripped) and stripped[index + 1] == "|":
+                if index + 2 < len(stripped) and stripped[index + 2] == "|":
+                    return None
+                if not _append_shell_segment(stripped, segment_start, index, segments):
+                    return None
+                separators.append("||")
+                segment_start = index + 2
+                index += 2
+                continue
+            return None
+        if char in "<>()":
+            return None
+        index += 1
+
+    if quote is not None or escaped:
+        return None
+    if not _append_shell_segment(stripped, segment_start, len(stripped), segments):
+        return None
+    return segments, separators
+
+
+def _append_shell_segment(command: str, start: int, end: int, segments: list[str]) -> bool:
+    segment = command[start:end].strip()
+    if not segment:
+        return False
+    segments.append(segment)
+    return True
+
+
+def _rewrite_shell_list(segments: list[str], separators: list[str], agent: Agent) -> str | None:
+    segment_parts: list[list[str]] = []
+    for segment in segments:
+        parts = _split_command(segment)
+        if not parts:
+            return None
+        segment_parts.append(parts)
+
+    rewritten_segments: list[str | None] = []
+    changed = False
+    for segment in segment_parts:
+        rewrite = _rewrite_segment(segment, agent)
+        if rewrite is None:
+            if not _can_preserve_shell_list_segment(segment):
+                rewritten_segments.append(None)
+                continue
+            rewrite = _join(segment)
+        else:
+            changed = True
+        rewritten_segments.append(rewrite)
+
+    if not changed:
+        return None
+
+    for index, rewrite in enumerate(rewritten_segments):
+        if rewrite is not None:
+            continue
+        segment = segment_parts[index]
+        if not _can_apply_shell_list_policy_exception(
+            agent,
+            segment,
+            [item for item in rewritten_segments[index + 1 :] if item is not None],
+            segments[index + 1 :],
+            separators[index:],
+        ):
+            return None
+        rewritten_segments[index] = _join(segment)
+
+    if any(segment is None for segment in rewritten_segments):
+        return None
+
+    materialized_segments = [segment for segment in rewritten_segments if segment is not None]
+    result = materialized_segments[0]
+    for separator, segment in zip(separators, materialized_segments[1:]):
+        result = f"{result} {separator} {segment}"
+    return result
+
+
+def _can_apply_shell_list_policy_exception(
+    agent: Agent,
+    parts: list[str],
+    rewritten_segments: list[str],
+    remaining_segments: list[str],
+    remaining_separators: list[str],
+) -> bool:
+    return any(
+        agent in exception.agents
+        and exception.can_preserve(
+            parts,
+            rewritten_segments,
+            remaining_segments,
+            remaining_separators,
+        )
+        for exception in CODEX_SHELL_LIST_POLICY_EXCEPTIONS
+    )
+
+
+def _rewrite_segment(parts: list[str], agent: Agent) -> str | None:
     if not parts:
+        return None
+    if _has_env_assignment_prefix(parts):
         return None
     if Path(parts[0]).name.lower() == "env" and len(parts) > 1:
         return None
-    if is_already_rtk_wrapped(command) or is_complex_shell_command(command):
+    if _is_rtk_wrapped_parts(parts):
         return None
     if _has_common_deny(parts):
         return None
     return _rewrite_parts(parts, agent)
 
 
+def _has_unsafe_shell_expansion(command: str) -> bool:
+    return any(token in command for token in _UNSAFE_SHELL_EXPANSIONS)
+
+
+def _has_unquoted_shell_syntax(command: str) -> bool:
+    quote: str | None = None
+    escaped = False
+    for char in command:
+        if escaped:
+            escaped = False
+            continue
+        if quote is not None:
+            if char == quote:
+                quote = None
+            elif quote == '"' and char == "\\":
+                escaped = True
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            continue
+        if char in _SHELL_PUNCTUATION_CHARS:
+            return True
+    return False
+
+
+def _has_env_assignment_prefix(parts: list[str]) -> bool:
+    return bool(parts and _ENV_PREFIX_RE.match(parts[0]))
+
+
+def _can_preserve_shell_list_segment(parts: list[str]) -> bool:
+    if not parts or _has_env_assignment_prefix(parts):
+        return False
+    command = parts[0]
+    if command not in _PRESERVABLE_SHELL_LIST_COMMANDS:
+        return False
+    if command == "cd":
+        return _safe_cd_args(parts[1:])
+    return len(parts) == 1
+
+
+def _safe_cd_args(args: list[str]) -> bool:
+    if not args or args == ["-"]:
+        return True
+    if args[0] == "--":
+        args = args[1:]
+        if not args:
+            return True
+    if len(args) != 1 or args[0].startswith(("-", "~")):
+        return False
+    return not any(char in args[0] for char in _UNSAFE_PRESERVED_ARG_CHARS)
+
+
+def _safe_gofmt_write_args(parts: list[str]) -> bool:
+    if len(parts) < 3 or parts[0] != "gofmt":
+        return False
+    if parts[1] != "-w":
+        return False
+    return all(_safe_gofmt_path(arg) for arg in parts[2:])
+
+
+def _safe_gofmt_path(arg: str) -> bool:
+    if not arg.endswith(".go"):
+        return False
+    if arg.startswith(("-", "~", "/")):
+        return False
+    if ".." in Path(arg).parts:
+        return False
+    return not any(char in arg for char in _UNSAFE_PRESERVED_ARG_CHARS)
+
+
+def _safe_cargo_fmt_write_args(parts: list[str]) -> bool:
+    if len(parts) < 2 or parts[0] != "cargo":
+        return False
+    return parts[1:] in (["fmt"], ["fmt", "--all"])
+
+
+def _is_rtk_wrapped_parts(parts: list[str]) -> bool:
+    executable = Path(parts[0]).name.lower()
+    return executable in {"rtk", "rtk.exe"}
+
+
 def _has_common_deny(parts: list[str]) -> bool:
-    return _has_machine_output_flag(parts) or _has_watch_flag(parts)
+    command = Path(parts[0]).name.lower() if parts else ""
+    return _has_machine_output_flag(parts, allow_quiet=command == "cargo") or _has_watch_flag(parts)
 
 
-def _has_machine_output_flag(parts: list[str]) -> bool:
+def _has_machine_output_flag(parts: list[str], *, allow_quiet: bool = False) -> bool:
     for index, part in enumerate(parts[1:], start=1):
+        if allow_quiet and part == "-q":
+            continue
         if part in _MACHINE_OUTPUT_FLAGS:
             return True
         if "=" in part:
@@ -337,7 +686,11 @@ def _rewrite_git(parts: list[str]) -> str | None:
     subcommand = parts[1]
     args = parts[2:]
     if subcommand == "status":
-        return _rtk_prefix(parts) if args in ([], ["--short"], ["-s"]) else None
+        return _rtk_prefix(parts) if _safe_git_status_args(args) else None
+    if subcommand == "rev-parse":
+        return _rtk_prefix(parts) if args == ["HEAD"] else None
+    if subcommand == "branch":
+        return _rtk_prefix(parts) if _safe_git_branch_args(args) else None
     if subcommand == "log":
         return _rtk_prefix(parts) if _safe_git_log_args(args) else None
     if subcommand == "stash":
@@ -349,23 +702,28 @@ def _rewrite_git(parts: list[str]) -> str | None:
     return None
 
 
+def _safe_git_status_args(args: list[str]) -> bool:
+    return args in (
+        [],
+        ["--short"],
+        ["-s"],
+        ["--short", "--branch"],
+        ["--branch", "--short"],
+        ["-sb"],
+    )
+
+
+def _safe_git_branch_args(args: list[str]) -> bool:
+    return args in (["--show-current"], ["-vv"], ["--list"])
+
+
 def _safe_git_diff_args(args: list[str]) -> bool:
-    if not args or args[0] != "--stat":
-        return False
-    denied = {
-        "--name-only",
-        "--name-status",
-        "--numstat",
-        "--raw",
-        "--patch",
-        "--patch-with-stat",
-        "--patch-with-raw",
-        "--binary",
-        "--full-index",
-        "-p",
-    }
-    denied_prefixes = ("--patch", "--raw", "--name-", "--numstat", "--binary", "--full-index")
-    return not any(arg in denied or arg.startswith(denied_prefixes) for arg in args)
+    return args in (
+        ["--stat"],
+        ["--cached", "--stat"],
+        ["--stat", "--cached"],
+        ["--check"],
+    )
 
 
 def _safe_git_log_args(args: list[str]) -> bool:
@@ -431,6 +789,7 @@ def _has_test_runner_deny(parts: list[str]) -> bool:
 
 def _rewrite_package_manager(parts: list[str]) -> str | None:
     command = Path(parts[0]).name.lower()
+    exact_command = parts[0]
     if command == "npm":
         if len(parts) > 1 and parts[1] == "install":
             return _rtk_prefix(parts)
@@ -440,13 +799,51 @@ def _rewrite_package_manager(parts: list[str]) -> str | None:
 
     if len(parts) > 1 and parts[1] in {"install", "list", "outdated"}:
         return _rtk_prefix(parts)
-    if len(parts) > 1 and parts[1] in {"test", "lint", "build"}:
+    if exact_command == "pnpm" and len(parts) == 2 and _safe_pnpm_direct_script(parts[1]):
         return _rtk_prefix(parts)
     if len(parts) > 2 and parts[1] == "run" and _safe_package_script(parts[2]):
         return _rtk_prefix(parts)
     if len(parts) > 2 and parts[1] == "exec":
         return _rewrite_pnpm_exec(parts)
+    if (
+        exact_command == "pnpm"
+        and len(parts) == 4
+        and parts[1] == "--filter"
+        and _safe_pnpm_filtered_invocation(parts[2:])
+    ):
+        return _rtk_prefix(parts)
     return None
+
+
+def _safe_pnpm_direct_script(script: str) -> bool:
+    lowered = script.lower()
+    if any(word in lowered for word in _SERVER_SCRIPT_WORDS):
+        return False
+    return (
+        script in _SAFE_PNPM_DIRECT_SCRIPTS
+        or script.startswith("test:")
+        or script.startswith("check:")
+    )
+
+
+def _safe_pnpm_filtered_invocation(args: list[str]) -> bool:
+    package, script = args
+    return _safe_pnpm_package_selector(package) and script in _SAFE_PNPM_FILTERED_SCRIPTS
+
+
+def _safe_pnpm_package_selector(selector: str) -> bool:
+    if not selector or any(char.isspace() for char in selector):
+        return False
+    if any(token in selector for token in ("*", "?", "[", "]", "{", "}", "!", "...", "^", ":", ",")):
+        return False
+    if selector.startswith(("./", "../")):
+        return False
+    if selector.startswith("@"):
+        parts = selector[1:].split("/")
+        return len(parts) == 2 and all(_PACKAGE_NAME_PART_RE.match(part) for part in parts)
+    if "/" in selector:
+        return False
+    return _PACKAGE_NAME_PART_RE.match(selector) is not None
 
 
 def _safe_package_script(script: str) -> bool:
@@ -569,5 +966,5 @@ def build_claude_scoped_hooks(command: str = "rtk hook claude") -> list[dict]:
     """Build Claude Code scoped hook entries from the shared allowlist."""
     return [
         {"type": "command", "command": command, "if": f"Bash({pattern})"}
-        for pattern in CANDIDATE_PATTERNS
+        for pattern in SCOPED_PATTERNS
     ]

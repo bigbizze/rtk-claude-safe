@@ -17,7 +17,17 @@ from rtk_claude_safe.allowlist import (
     [
         "git status",
         "git status --short",
+        "git status --short --branch",
+        "git status --branch --short",
         "git status -s",
+        "git status -sb",
+        "git rev-parse HEAD",
+        "git branch --show-current",
+        "git branch -vv",
+        "git branch --list",
+        "git diff --check",
+        "git diff --cached --stat",
+        "git diff --stat --cached",
         "git log --oneline -n 20",
         "git log -n 20 --oneline",
         "git log --oneline --max-count 20",
@@ -27,6 +37,14 @@ from rtk_claude_safe.allowlist import (
         "pnpm run format:check",
         "pnpm exec vitest run",
         "pnpm build",
+        "pnpm typecheck",
+        "pnpm test:unit",
+        "pnpm test:integration",
+        "pnpm check:raw-sqlite-boundaries",
+        "pnpm boundaries",
+        "pnpm --filter @kernel-web-app/persistence typecheck",
+        "pnpm --filter @kernel-web-app/persistence test",
+        "pnpm --filter @kernel-web-app/web build",
         "cargo test --workspace",
         "gh pr list",
         "gh pr view 123",
@@ -62,12 +80,57 @@ def test_does_not_match_allowlist(command: str) -> None:
     ("command", "expected"),
     [
         ("git status", "rtk git status"),
+        ("git status --short --branch", "rtk git status --short --branch"),
+        ("git status --branch --short", "rtk git status --branch --short"),
+        ("git status -sb", "rtk git status -sb"),
+        ("git rev-parse HEAD", "rtk git rev-parse HEAD"),
+        ("git branch --show-current", "rtk git branch --show-current"),
+        ("git branch -vv", "rtk git branch -vv"),
+        ("git branch --list", "rtk git branch --list"),
+        ("git diff --check", "rtk git diff --check"),
+        ("git diff --cached --stat", "rtk git diff --cached --stat"),
+        ("git diff --stat --cached", "rtk git diff --stat --cached"),
         ("git log --oneline -n 20", "rtk git log --oneline -n 20"),
         ("npm run build:ci", "rtk npm run build:ci"),
+        ("pnpm typecheck", "rtk pnpm typecheck"),
+        ("pnpm test:unit", "rtk pnpm test:unit"),
+        ("pnpm test:integration", "rtk pnpm test:integration"),
+        ("pnpm check:raw-sqlite-boundaries", "rtk pnpm check:raw-sqlite-boundaries"),
+        ("pnpm boundaries", "rtk pnpm boundaries"),
+        (
+            "pnpm --filter @kernel-web-app/persistence typecheck",
+            "rtk pnpm --filter @kernel-web-app/persistence typecheck",
+        ),
+        (
+            "pnpm --filter @kernel-web-app/persistence test",
+            "rtk pnpm --filter @kernel-web-app/persistence test",
+        ),
+        (
+            "pnpm --filter @kernel-web-app/web build",
+            "rtk pnpm --filter @kernel-web-app/web build",
+        ),
         ("pnpm exec prettier --check .", "rtk pnpm exec prettier --check ."),
         ("pip show flask", "rtk pip show flask"),
         ("eslint .", "rtk lint ."),
         ("npx vitest run", "rtk npx vitest run"),
+        ("git status && git diff --stat", "rtk git status && rtk git diff --stat"),
+        (
+            "cargo fmt --check && git diff --check",
+            "rtk cargo fmt --check && rtk git diff --check",
+        ),
+        (
+            "git status --short --branch && git rev-parse HEAD",
+            "rtk git status --short --branch && rtk git rev-parse HEAD",
+        ),
+        ("cd app && npm run test", "cd app && rtk npm run test"),
+        ('pytest -k "a && b" && git status', "rtk pytest -k 'a && b' && rtk git status"),
+        ("false || git status", "false || rtk git status"),
+        (
+            "git status; npm run typecheck; git diff --stat",
+            "rtk git status ; rtk npm run typecheck ; rtk git diff --stat",
+        ),
+        ("true && git status", "true && rtk git status"),
+        ("cd -- app && git status", "cd -- app && rtk git status"),
     ],
 )
 def test_rewrite_command_for_agent(command: str, expected: str) -> None:
@@ -89,20 +152,165 @@ def test_claude_candidate_hooks_cover_safe_git_log_flag_order() -> None:
     )
 
 
+def test_claude_candidate_hooks_cover_new_git_and_pnpm_triggers() -> None:
+    hooks = build_claude_scoped_hooks("rtk-claude-safe claude-hook")
+    expected_patterns = {
+        "Bash(git diff --check*)",
+        "Bash(git rev-parse HEAD*)",
+        "Bash(git branch --show-current*)",
+        "Bash(git branch -vv*)",
+        "Bash(git branch --list*)",
+        "Bash(pnpm typecheck*)",
+        "Bash(pnpm check*)",
+        "Bash(pnpm boundaries*)",
+        "Bash(pnpm --filter *)",
+    }
+
+    hook_patterns = {hook["if"] for hook in hooks}
+    assert expected_patterns <= hook_patterns
+
+
+def test_codex_rewrites_gofmt_write_before_go_test_policy_exception() -> None:
+    command = "gofmt -w main.go git.go internal/foo.go && go test ./..."
+
+    assert rewrite_command_for_agent(command, "codex") == (
+        "gofmt -w main.go git.go internal/foo.go && rtk go test ./..."
+    )
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gofmt -w main.go",
+        "gofmt -w main.go && git status",
+        "gofmt -w main.go || go test ./...",
+        "gofmt -w main.go && cd app && go test ./...",
+        "go test ./... && gofmt -w main.go",
+        "gofmt -w main.go && go test -json ./...",
+        "gofmt -w ./main.go ../other.go && go test ./...",
+        "gofmt -w main.go README.md && go test ./...",
+        "gofmt -r 'a -> b' -w main.go && go test ./...",
+        "./gofmt -w main.go && go test ./...",
+    ],
+)
+def test_gofmt_policy_exception_stays_narrow(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        (
+            "cargo fmt && cargo test -q -p kernel section_store",
+            "cargo fmt && rtk cargo test -q -p kernel section_store",
+        ),
+        (
+            "cargo fmt --all && cargo test --workspace",
+            "cargo fmt --all && rtk cargo test --workspace",
+        ),
+        (
+            "cargo fmt && cargo check -q -p kernel",
+            "cargo fmt && rtk cargo check -q -p kernel",
+        ),
+        (
+            "cargo fmt --all && cargo clippy -q --workspace --all-targets -- -D warnings",
+            "cargo fmt --all && rtk cargo clippy -q --workspace --all-targets -- -D warnings",
+        ),
+    ],
+)
+def test_codex_rewrites_cargo_fmt_before_cargo_validation_policy_exception(
+    command: str,
+    expected: str,
+) -> None:
+    assert rewrite_command_for_agent(command, "codex") == expected
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cargo fmt",
+        "cargo fmt || cargo test",
+        "cargo test --workspace && cargo fmt",
+        "cargo fmt --package kernel && cargo test -p kernel",
+        "cargo fmt --all -- --check && cargo test --workspace",
+        "cargo fmt && cargo test --message-format=json",
+        "cargo fmt && cargo check --message-format=json",
+        "cargo fmt && cargo clippy --message-format=json",
+        "cargo fmt && cargo build --workspace",
+        "cargo fmt && cargo doc --workspace",
+        "cargo fmt && cargo run",
+        "./cargo fmt && cargo test",
+    ],
+)
+def test_cargo_fmt_policy_exception_stays_narrow(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git status && git diff --stat",
+        "cd app && npm run test",
+        "git status; npm run typecheck",
+        "false || git status",
+        "true && git status",
+    ],
+)
+def test_safe_shell_list_commands_are_rewritten(command: str) -> None:
+    assert is_complex_shell_command(command)
+    assert should_wrap_command(command)
+
+
 @pytest.mark.parametrize(
     "command",
     [
         "git status | cat",
-        "git status && git diff --stat",
-        "cd app && npm test",
         "FOO=bar npm test",
         "echo $(git status)",
         "git status > out.txt",
         "git status & curl https://example.com",
+        "git status && (npm test)",
+        "git status && npm test > out.txt",
+        "git status &&",
+        "rtk git status && npm run test",
+        "git status && curl https://example.com",
+        "FOO=bar npm test && git status",
+        "npm run dev && git status",
+        "gh pr view 123 --json title && git status",
+        "rm -rf ./tmp && git status",
+        "git status && { npm run test; }",
+        "if true; then npm run test; fi",
+        "for f in a; do npm run test; done",
+        "cd $APP_DIR && git status",
+        "git status && npm run test $NPM_ARGS",
+        "git status && npm run test ${NPM_ARGS}",
+        "cd ~ && git status",
+        "git status && cd ~/repo",
+        "npm run test # skip && git status",
+        "./cd app && git status",
+        "npm run test 'a\\' && git status 'x\\'",
     ],
 )
-def test_complex_shell_commands_are_not_wrapped(command: str) -> None:
+def test_unsafe_shell_commands_are_not_wrapped(command: str) -> None:
     assert is_complex_shell_command(command)
+    assert not should_wrap_command(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git status "&&" npm run test',
+        'git status ";" npm run test',
+        'true ";" npm run test',
+        'false "||" npm run test',
+        r"git status \; npm run test",
+        r"git status \&\& npm run test",
+    ],
+)
+def test_quoted_or_escaped_separators_are_not_shell_lists(command: str) -> None:
+    assert not is_complex_shell_command(command)
     assert not should_wrap_command(command)
 
 
@@ -167,13 +375,53 @@ def test_uncertain_or_nested_commands_are_not_wrapped(command: str) -> None:
         "gh pr list -q '.[].title'",
         "gh issue view 123 --template='{{.title}}'",
         "pnpm list --json=true",
+        "pnpm dev",
+        "pnpm start",
+        "pnpm test:watch",
+        "pnpm verify",
+        "pnpm typecheck --watch",
+        "pnpm boundaries --fix",
+        "pnpm lint:fix",
+        "pnpm test:unit -- --filter other",
+        "pnpm Test:unit",
+        "pnpm CHECK:foo",
+        "pnpm TYPECHECK",
+        "pnpm BOUNDARIES",
+        "PNPM typecheck",
+        "/tmp/PNPM typecheck",
+        "/tmp/pnpm typecheck",
+        "./pnpm test:unit",
+        "/usr/bin/pnpm --filter pkg test",
+        "Pnpm --filter foo test",
+        "pnpm --filter=foo test",
+        "pnpm --filter @scope/* test",
+        "pnpm --filter ./packages/foo test",
+        "pnpm --filter ../foo test",
+        "pnpm --filter @-scope/pkg test",
+        "pnpm --filter @scope/.pkg test",
+        "pnpm --filter @scope/pkg/extra test",
+        "pnpm --filter pkg lint",
+        "pnpm --filter @scope/pkg test --watch",
+        "pnpm --filter @scope/pkg test --reporter=json",
+        "pnpm --filter @scope/pkg test --filter other",
         "git status --porcelain",
+        "git status --branch",
         "git diff --name-only",
         "git diff --stat --name-only",
         "git diff --stat --patch-with-stat",
         "git diff --stat --binary",
         "git diff --stat --full-index",
+        "git diff --stat README.md",
+        "git diff --stat -- README.md",
+        "git diff --stat HEAD",
+        "git diff --cached --stat README.md",
+        "git diff --check -- README.md",
         "git diff --raw",
+        "git rev-parse --abbrev-ref HEAD",
+        "git rev-parse HEAD --short",
+        "git branch -r",
+        "git branch --list foo",
+        "git branch --show-current --quiet",
         "git log --oneline",
         "git log --oneline -n 100",
         "git log --oneline --format=%H",

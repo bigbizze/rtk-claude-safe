@@ -38,6 +38,26 @@ def test_claude_settings_create_scoped_hooks_from_scratch(tmp_path) -> None:
     assert not patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
 
 
+def test_claude_scoped_hooks_cover_chained_command_positions() -> None:
+    hooks = build_claude_scoped_hooks(SAFE_CLAUDE_COMMAND)
+
+    assert {
+        "type": "command",
+        "command": SAFE_CLAUDE_COMMAND,
+        "if": "Bash(*&&*npm run test*)",
+    } in hooks
+    assert {
+        "type": "command",
+        "command": SAFE_CLAUDE_COMMAND,
+        "if": "Bash(*||*git status*)",
+    } in hooks
+    assert {
+        "type": "command",
+        "command": SAFE_CLAUDE_COMMAND,
+        "if": "Bash(*;*git diff --stat*)",
+    } in hooks
+
+
 def test_claude_settings_remove_rtk_hooks_from_duplicate_bash_groups(tmp_path) -> None:
     settings_path = tmp_path / "settings.json"
     settings_path.write_text(
