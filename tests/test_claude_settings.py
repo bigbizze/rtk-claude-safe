@@ -4,7 +4,11 @@ import json
 
 import pytest
 
-from rtk_claude_safe.allowlist import SCOPED_PATTERNS, build_claude_scoped_hooks
+from rtk_claude_safe.allowlist import (
+    ENV_PREFIX_VARIABLE_NAMES,
+    SCOPED_PATTERNS,
+    build_claude_scoped_hooks,
+)
 from rtk_claude_safe.claude_settings import RTK_COMMAND, patch_settings
 
 SAFE_CLAUDE_COMMAND = "rtk-claude-safe claude-hook"
@@ -56,6 +60,49 @@ def test_claude_scoped_hooks_cover_chained_command_positions() -> None:
         "command": SAFE_CLAUDE_COMMAND,
         "if": "Bash(*;*git diff --stat*)",
     } in hooks
+
+
+def test_claude_settings_reconcile_environment_candidates_idempotently(tmp_path) -> None:
+    settings_path = tmp_path / ".claude" / "settings.json"
+    settings_path.parent.mkdir()
+    settings_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "Bash",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": RTK_COMMAND,
+                                    "if": "Bash(CI=old*)",
+                                },
+                                {"type": "command", "command": "user-hook"},
+                            ],
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
+    assert not patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
+
+    hooks = _read(settings_path)["hooks"]["PreToolUse"][0]["hooks"]
+    assert {"type": "command", "command": "user-hook"} in hooks
+    installed_patterns = {
+        hook["if"]
+        for hook in hooks
+        if hook.get("command") == SAFE_CLAUDE_COMMAND
+    }
+    for name in ENV_PREFIX_VARIABLE_NAMES:
+        assert f"Bash({name}=*)" in installed_patterns
+        assert f"Bash(*&&*{name}=*)" in installed_patterns
+        assert f"Bash(*||*{name}=*)" in installed_patterns
+        assert f"Bash(*;*{name}=*)" in installed_patterns
 
 
 def test_claude_settings_remove_rtk_hooks_from_duplicate_bash_groups(tmp_path) -> None:

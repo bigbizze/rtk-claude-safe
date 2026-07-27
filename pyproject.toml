@@ -24,6 +24,9 @@ rtk-claude-safe = "rtk_claude_safe.cli:main"
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [project.urls]
 "Source" = "https://github.com/bigbizze/rtk-claude-safe"
 

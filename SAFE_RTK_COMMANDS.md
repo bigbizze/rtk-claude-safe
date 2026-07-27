@@ -11,12 +11,14 @@ The source of truth is `rtk_claude_safe/allowlist.py`.
 
 Both agent hooks use the same parsed-command classifier:
 
-1. Parse the shell command with `shlex`.
-2. Split top-level shell lists on `&&`, `||`, and `;`.
-3. Deny unsupported shell syntax before any segment allow rule can match.
-4. Deny long-running, watch, server, and machine-readable output modes per segment.
-5. Run command-family-specific safe predicates per segment.
-6. Return an explicit RTK rewrite command only when at least one segment is allowlisted and every
+1. Deny dynamic expansions and split top-level shell lists on `&&`, `||`, and `;`.
+2. Deny unsupported shell syntax before any segment allow rule can match.
+3. Parse each segment with `shlex` while retaining enough lexical form to distinguish real shell
+   assignments from quoted command words.
+4. Separate contiguous leading `NAME=value` assignments from each segment's command.
+5. Deny long-running, watch, server, and machine-readable output modes on the underlying command.
+6. Run command-family-specific safe predicates, identify the stack, and validate every assignment.
+7. Return an explicit RTK rewrite command only when at least one segment is allowlisted and every
    other segment is an explicitly preservable neutral command; otherwise return `None` to fail open.
 
 Fail open means the hook emits no output and the agent runs the original command unchanged. This is
@@ -28,7 +30,6 @@ The classifier rejects these forms before allowlist matching:
 
 - Unsupported shell syntax: pipes, redirects, background `&`, grouping, newlines, backticks,
   command substitution, and process substitution.
-- Environment-prefixed command segments such as `FOO=bar npm test`.
 - Already wrapped commands such as `rtk git status` and `rtk proxy git diff`.
 - Watch or server modes: `--watch`, `--watchAll`, `--watch-all`, and package scripts named
   `dev`, `start`, `serve`, `server`, `preview`, `storybook`, or `watch`.
@@ -40,8 +41,52 @@ Top-level `&&`, `||`, and `;` shell lists are handled segment by segment. For ex
 `cd app && npm run test && git status` rewrites to
 `cd app && rtk npm run test && rtk git status`; the unmatched `cd app` segment is preserved
 unchanged because `cd` is an explicitly allowed neutral segment. Denied segments such as
-already-wrapped `rtk ...`, environment-prefixed commands, watch/server commands, machine-readable
+already-wrapped `rtk ...`, invalid environment prefixes, watch/server commands, machine-readable
 output modes, hard-excluded commands, and arbitrary shell commands make the whole list fail open.
+
+## Curated Environment Prefix Registry
+
+The classifier accepts one or more contiguous leading assignments only when the underlying command
+is already allowlisted and every name and value is permitted for its detected stack. Names and
+values are exact and case-sensitive.
+
+| Scope | Exact accepted assignments |
+| --- | --- |
+| Any allowlisted command | `LC_ALL=C` or `LC_ALL=C.UTF-8`; `LANG=C` or `LANG=C.UTF-8`; `NO_COLOR=1` or `NO_COLOR=true`; `FORCE_COLOR=0` |
+| Rust, Go, Python, or Node.js | `CI=1` or `CI=true`; `TZ=UTC` |
+| Rust/Cargo | `CARGO_TERM_COLOR=never`; `RUST_BACKTRACE=0`, `RUST_BACKTRACE=1`, or `RUST_BACKTRACE=full` |
+| Go | `CGO_ENABLED=0` or `CGO_ENABLED=1`; `GOMAXPROCS` as an ASCII decimal integer from 1 through 256; `GOTOOLCHAIN=local`; `GOWORK=auto` or `GOWORK=off` |
+| Python | `PYTHONUNBUFFERED=1`; `PYTHONDONTWRITEBYTECODE=1`; `PYTHONHASHSEED=random` or an ASCII decimal integer from 0 through 4294967295 |
+| Pytest only | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` |
+| Node.js | `NODE_ENV=development`, `NODE_ENV=production`, or `NODE_ENV=test`; `NODE_NO_WARNINGS=1`; `NODE_DISABLE_COLORS=1`; each of `npm_config_color`, `npm_config_progress`, `npm_config_audit`, `npm_config_fund`, and `npm_config_update_notifier` set to `false` or `0` |
+
+Assignments are parsed separately and safely re-rendered before RTK:
+
+```text
+CARGO_TERM_COLOR=never cargo test
+→ CARGO_TERM_COLOR=never rtk cargo test
+
+NO_COLOR=true NODE_ENV=test eslint .
+→ NO_COLOR=true NODE_ENV=test rtk lint .
+
+LC_ALL=C git status && CI=1 go test ./...
+→ LC_ALL=C rtk git status && CI=1 rtk go test ./...
+```
+
+Every rewritable segment of an `&&`, `||`, or `;` list may have its own validated prefix. One
+invalid segment makes the complete list fail open. Duplicate names, prefixes without a command,
+dynamic values, and assignment-prefixed existing RTK commands are denied.
+
+Unknown names are denied even if their values look harmless. This keeps execution-routing and
+option-injection variables out of rewrites, including `PATH`, loader variables such as
+`LD_PRELOAD` and `DYLD_INSERT_LIBRARIES`, `NODE_OPTIONS`, `PYTHONPATH`, `PYTEST_ADDOPTS`,
+`GOFLAGS`, `GODEBUG`, `RUSTFLAGS`, `RUSTC_WRAPPER`, `CARGO_HOME`, and all `RTK_*` names.
+Variable names with different casing are also unknown; npm's accepted names are the exact lowercase
+`npm_config_*` spellings shown above.
+
+The supported syntax is a direct assignment prefix. The classifier continues to reject
+`env NAME=value command`, `export`, `sudo`, redirects, pipes, multiline scripts, command and process
+substitutions, and other unsupported shell forms.
 
 Codex has an explicit narrow-exception contract for preserving specific non-RTK segments in
 auto-allowed rewrites. Each exception is named in `allowlist.py`, scoped to Codex, and must inspect
@@ -50,11 +95,13 @@ the surrounding shell list. The current exceptions are:
 - `gofmt-write-before-go-test`: `gofmt -w` with explicit relative `.go` files may be preserved
   before an `&& go test ...` segment that is rewritten through RTK. It does not apply to Claude,
   non-Go files, parent-directory paths, `||`, or formatter invocations without a following rewritten
-  Go test segment.
+  Go test segment. Curated Go environment prefixes are validated independently on the formatter and
+  test segments.
 - `cargo-fmt-before-cargo-validation`: `cargo fmt` or `cargo fmt --all` may be preserved before an
   immediate `&& cargo test ...`, `&& cargo check ...`, or `&& cargo clippy ...` segment that is
   rewritten through RTK. It does not apply to Claude, alternate formatter flags, `||`, or Cargo
-  subcommands outside those validation targets.
+  subcommands outside those validation targets. Curated Rust environment prefixes are validated
+  independently on both segments.
 
 ## Included Families
 
@@ -106,8 +153,10 @@ These remain denied even though RTK may expose handlers for some of them:
 
 Claude and Codex both call this package's Python hooks. The main difference is where matching starts:
 
-- Claude settings contain many scoped `Bash(<pattern>*)` matcher groups. The Claude hook still
-  parses and checks the raw command before rewriting, so settings-level scope is only a first pass.
+- Claude settings contain scoped `Bash(<pattern>*)` matcher groups for allowlisted commands,
+  permitted first-variable names, and chained positions. The Claude hook still parses and checks
+  every raw name, value, stack, and command before rewriting, so settings-level scope is only a
+  first pass.
 - Codex settings contain one `^Bash$` matcher group. Codex matchers apply to the tool name, so the
   full command policy must live inside the hook executable.
 

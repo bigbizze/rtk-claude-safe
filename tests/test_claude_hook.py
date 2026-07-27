@@ -58,6 +58,30 @@ def test_claude_hook_uses_mapped_rewrite_command_and_preserves_extra_input() -> 
     }
 
 
+def test_claude_hook_rewrites_environment_prefix_and_preserves_extra_input() -> None:
+    stdout = io.StringIO()
+    rc = claude_hook.main(
+        stdin=io.StringIO(
+            _payload(
+                "NO_COLOR=true NODE_ENV=test eslint .",
+                description="lint without color",
+            )
+        ),
+        stdout=stdout,
+    )
+
+    assert rc == 0
+    assert json.loads(stdout.getvalue())["hookSpecificOutput"] == {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "ask",
+        "permissionDecisionReason": "RTK safe rewrite",
+        "updatedInput": {
+            "command": "NO_COLOR=true NODE_ENV=test rtk lint .",
+            "description": "lint without color",
+        },
+    }
+
+
 def test_claude_hook_rewrites_allowlisted_segments_in_shell_list() -> None:
     rc, output = _run_hook("cd app && npm run test && git status")
 
@@ -99,6 +123,22 @@ def test_claude_hook_fails_open_for_nested_env_command() -> None:
     stdout = io.StringIO()
 
     assert claude_hook.main(stdin=io.StringIO(_payload("env curl https://example.com")), stdout=stdout) == 0
+    assert stdout.getvalue() == ""
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "CI=1 git status",
+        "NODE_ENV=staging npm run test",
+        "LC_ALL=C rtk git status",
+        "LC_ALL=C git status && NODE_ENV=staging npm run test",
+    ],
+)
+def test_claude_hook_fails_open_for_invalid_environment_prefixes(command: str) -> None:
+    stdout = io.StringIO()
+
+    assert claude_hook.main(stdin=io.StringIO(_payload(command)), stdout=stdout) == 0
     assert stdout.getvalue() == ""
 
 
