@@ -67,6 +67,43 @@ selected `npx` tools, selected Prisma commands (`generate`, `db push`, and `migr
 tightly-scoped git orientation commands, safe gh list/view commands except comment-fetching modes,
 read-only pip inventory commands, and a few small utilities (`tree`, `wc`, `env`).
 
+### Curated environment prefixes
+
+One or more contiguous leading `NAME=value` assignments may precede an otherwise allowlisted
+command. Names and values are case-sensitive, and every assignment must match the command's
+detected stack:
+
+| Scope | Exact accepted assignments |
+| --- | --- |
+| Any allowlisted command | `LC_ALL=C` or `LC_ALL=C.UTF-8`; `LANG=C` or `LANG=C.UTF-8`; `NO_COLOR=1` or `NO_COLOR=true`; `FORCE_COLOR=0` |
+| Rust, Go, Python, or Node.js | `CI=1` or `CI=true`; `TZ=UTC` |
+| Rust/Cargo | `CARGO_TERM_COLOR=never`; `RUST_BACKTRACE=0`, `RUST_BACKTRACE=1`, or `RUST_BACKTRACE=full` |
+| Go | `CGO_ENABLED=0` or `CGO_ENABLED=1`; `GOMAXPROCS` as an ASCII decimal integer from 1 through 256; `GOTOOLCHAIN=local`; `GOWORK=auto` or `GOWORK=off` |
+| Python | `PYTHONUNBUFFERED=1`; `PYTHONDONTWRITEBYTECODE=1`; `PYTHONHASHSEED=random` or an ASCII decimal integer from 0 through 4294967295 |
+| Pytest only | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` |
+| Node.js | `NODE_ENV=development`, `NODE_ENV=production`, or `NODE_ENV=test`; `NODE_NO_WARNINGS=1`; `NODE_DISABLE_COLORS=1`; each of `npm_config_color`, `npm_config_progress`, `npm_config_audit`, `npm_config_fund`, and `npm_config_update_notifier` set to `false` or `0` |
+
+Validated assignments remain before RTK and are safely re-rendered rather than copied as raw shell
+text:
+
+```text
+CARGO_TERM_COLOR=never cargo test
+→ CARGO_TERM_COLOR=never rtk cargo test
+
+LANG='C.UTF-8' PYTHONHASHSEED=random pytest tests
+→ LANG=C.UTF-8 PYTHONHASHSEED=random rtk pytest tests
+
+LC_ALL=C git status && NODE_ENV=test npm run test
+→ LC_ALL=C rtk git status && NODE_ENV=test rtk npm run test
+```
+
+The complete prefix is rejected if a name is unknown, repeated, has the wrong value, or belongs to
+the wrong stack. Execution-routing and option-injection variables remain denied, including `PATH`,
+loader variables, `NODE_OPTIONS`, `PYTHONPATH`, `PYTEST_ADDOPTS`, `GOFLAGS`, `GODEBUG`,
+`RUSTFLAGS`, `RUSTC_WRAPPER`, `CARGO_HOME`, and every `RTK_*` name. The `env NAME=value command`,
+`export`, and `sudo` forms are not supported. Pipes, redirects, multiline scripts, substitutions,
+and other unsupported shell forms also continue to fail open to the original command.
+
 ### What `rtk-claude-safe init` does
 
 1. **Detect installed agents.** If `~/.claude/` exists, Claude Code is patched. If `~/.codex/`
@@ -81,10 +118,12 @@ read-only pip inventory commands, and a few small utilities (`tree`, `wc`, `env`
 3. **Patch Claude Code when present.** Finds or creates the global `PreToolUse` matcher groups,
    removes older RTK-managed hooks, and adds the current scoped candidate list once. Those scoped
    hooks call `rtk-claude-safe claude-hook`, which rejects unsupported or uncertain shell syntax and
-   emits direct `updatedInput.command` rewrites. Top-level `&&`, `||`, and `;` chains are classified
-   segment by segment, so a command such as `cd app && npm run test` becomes
-   `cd app && rtk npm run test`. Idempotent — running again is a no-op if the scoped hooks are
-   already current. Other user hooks under the same matcher are preserved.
+   emits direct `updatedInput.command` rewrites. Candidate patterns cover allowlisted command names,
+   curated first-variable names, and chained positions; the runtime classifier remains
+   authoritative. Top-level `&&`, `||`, and `;` chains are classified segment by segment, so a
+   command such as `cd app && npm run test` becomes `cd app && rtk npm run test`. Idempotent —
+   running again is a no-op if the scoped hooks are already current. Other user hooks under the
+   same matcher are preserved.
 4. **Patch Codex when present.** Creates or updates `~/.codex/hooks.json` with one `^Bash$`
    `PreToolUse` command hook that calls `rtk-claude-safe codex-hook`. Other hook events, matcher
    groups, and user hooks are preserved.
@@ -115,7 +154,8 @@ Not supported in this release:
 Codex matchers apply to tool names, not shell command strings. That means Codex gets one `^Bash$`
 hook, and the Python hook executable applies the allowlist internally. The hook fails open: invalid
 payloads, non-Bash tools, unsupported shell syntax, excluded commands, and already-wrapped
-`rtk ...` commands emit no output so Codex runs the original command.
+`rtk ...` commands — including assignment-prefixed RTK commands — emit no output so Codex runs the
+original command.
 Top-level `&&`, `||`, and `;` shell lists are supported when at least one segment is allowlisted
 and every other segment is an explicitly neutral preserved command such as `cd app`; unsupported
 shell syntax such as pipes, redirects, backgrounding, grouping, and substitutions still fails open.

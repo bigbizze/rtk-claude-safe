@@ -9,6 +9,37 @@ from pathlib import Path
 from typing import Callable, Literal
 
 Agent = Literal["claude", "codex"]
+CommandStack = Literal["generic", "rust", "go", "python", "pytest", "node"]
+
+# Claude's command matchers are candidates only. They need to recognize the
+# first assignment in a prefix, while the runtime classifier validates the
+# complete prefix against the command stack.
+ENV_PREFIX_VARIABLE_NAMES: tuple[str, ...] = (
+    "LC_ALL",
+    "LANG",
+    "NO_COLOR",
+    "FORCE_COLOR",
+    "CI",
+    "TZ",
+    "CARGO_TERM_COLOR",
+    "RUST_BACKTRACE",
+    "CGO_ENABLED",
+    "GOMAXPROCS",
+    "GOTOOLCHAIN",
+    "GOWORK",
+    "PYTHONUNBUFFERED",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONHASHSEED",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+    "NODE_ENV",
+    "NODE_NO_WARNINGS",
+    "NODE_DISABLE_COLORS",
+    "npm_config_color",
+    "npm_config_progress",
+    "npm_config_audit",
+    "npm_config_fund",
+    "npm_config_update_notifier",
+)
 
 # Candidate patterns decide when Claude should invoke the wrapper. The runtime
 # classifier below is the final authority for whether a command is rewritten.
@@ -111,8 +142,12 @@ CANDIDATE_PATTERNS: list[str] = [
 
 def _build_claude_candidate_patterns() -> list[str]:
     patterns = list(CANDIDATE_PATTERNS)
+    patterns.extend(f"{name}=*" for name in ENV_PREFIX_VARIABLE_NAMES)
     for separator in ("&&", "||", ";"):
         patterns.extend(f"*{separator}*{pattern}" for pattern in CANDIDATE_PATTERNS)
+        patterns.extend(
+            f"*{separator}*{name}=*" for name in ENV_PREFIX_VARIABLE_NAMES
+        )
     return patterns
 
 
@@ -120,10 +155,10 @@ def _build_claude_candidate_patterns() -> list[str]:
 SCOPED_PATTERNS = _build_claude_candidate_patterns()
 
 _SHELL_PUNCTUATION_CHARS = "|&;()<>#"
-_UNSAFE_SHELL_EXPANSIONS = ("\n", "`", "$", "<(", ">(")
+_UNSAFE_SHELL_EXPANSIONS = ("\n", "\r", "`", "$", "<(", ">(")
 _PRESERVABLE_SHELL_LIST_COMMANDS = {"cd", "true", "false", ":"}
 _UNSAFE_PRESERVED_ARG_CHARS = "$`*?[]{};&|<>!"
-_ENV_PREFIX_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_ENV_PREFIX_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 _MACHINE_OUTPUT_FLAGS = {
     "--json",
     "--jq",
@@ -189,6 +224,115 @@ _SAFE_PNPM_DIRECT_SCRIPTS = {"test", "lint", "build", "typecheck", "boundaries"}
 _SAFE_PNPM_FILTERED_SCRIPTS = {"typecheck", "test", "build"}
 _PACKAGE_NAME_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
+_ALL_COMMAND_STACKS: frozenset[CommandStack] = frozenset(
+    {"generic", "rust", "go", "python", "pytest", "node"}
+)
+_CI_COMMAND_STACKS: frozenset[CommandStack] = frozenset(
+    {"rust", "go", "python", "pytest", "node"}
+)
+_PYTHON_COMMAND_STACKS: frozenset[CommandStack] = frozenset({"python", "pytest"})
+
+
+@dataclass(frozen=True)
+class EnvironmentAssignment:
+    """One parsed leading shell assignment."""
+
+    name: str
+    value: str
+
+
+@dataclass(frozen=True)
+class EnvironmentVariablePolicy:
+    """Allowed values and command stacks for one environment variable."""
+
+    stacks: frozenset[CommandStack]
+    is_valid_value: Callable[[str], bool]
+
+
+def _one_of(*values: str) -> Callable[[str], bool]:
+    allowed = frozenset(values)
+    return lambda value: value in allowed
+
+
+def _decimal_in_range(minimum: int, maximum: int) -> Callable[[str], bool]:
+    maximum_digits = len(str(maximum))
+
+    def validate(value: str) -> bool:
+        if not value or re.fullmatch(r"[0-9]+", value) is None:
+            return False
+        normalized = value.lstrip("0") or "0"
+        if len(normalized) > maximum_digits:
+            return False
+        return minimum <= int(normalized, 10) <= maximum
+
+    return validate
+
+
+_VALID_PYTHON_HASH_SEED_NUMBER = _decimal_in_range(0, 4_294_967_295)
+
+
+def _valid_python_hash_seed(value: str) -> bool:
+    return value == "random" or _VALID_PYTHON_HASH_SEED_NUMBER(value)
+
+
+_ENVIRONMENT_VARIABLE_POLICIES: dict[str, EnvironmentVariablePolicy] = {
+    "LC_ALL": EnvironmentVariablePolicy(_ALL_COMMAND_STACKS, _one_of("C", "C.UTF-8")),
+    "LANG": EnvironmentVariablePolicy(_ALL_COMMAND_STACKS, _one_of("C", "C.UTF-8")),
+    "NO_COLOR": EnvironmentVariablePolicy(_ALL_COMMAND_STACKS, _one_of("1", "true")),
+    "FORCE_COLOR": EnvironmentVariablePolicy(_ALL_COMMAND_STACKS, _one_of("0")),
+    "CI": EnvironmentVariablePolicy(_CI_COMMAND_STACKS, _one_of("1", "true")),
+    "TZ": EnvironmentVariablePolicy(_CI_COMMAND_STACKS, _one_of("UTC")),
+    "CARGO_TERM_COLOR": EnvironmentVariablePolicy(frozenset({"rust"}), _one_of("never")),
+    "RUST_BACKTRACE": EnvironmentVariablePolicy(
+        frozenset({"rust"}), _one_of("0", "1", "full")
+    ),
+    "CGO_ENABLED": EnvironmentVariablePolicy(frozenset({"go"}), _one_of("0", "1")),
+    "GOMAXPROCS": EnvironmentVariablePolicy(
+        frozenset({"go"}), _decimal_in_range(1, 256)
+    ),
+    "GOTOOLCHAIN": EnvironmentVariablePolicy(frozenset({"go"}), _one_of("local")),
+    "GOWORK": EnvironmentVariablePolicy(frozenset({"go"}), _one_of("auto", "off")),
+    "PYTHONUNBUFFERED": EnvironmentVariablePolicy(
+        _PYTHON_COMMAND_STACKS, _one_of("1")
+    ),
+    "PYTHONDONTWRITEBYTECODE": EnvironmentVariablePolicy(
+        _PYTHON_COMMAND_STACKS, _one_of("1")
+    ),
+    "PYTHONHASHSEED": EnvironmentVariablePolicy(
+        _PYTHON_COMMAND_STACKS,
+        _valid_python_hash_seed,
+    ),
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": EnvironmentVariablePolicy(
+        frozenset({"pytest"}), _one_of("1")
+    ),
+    "NODE_ENV": EnvironmentVariablePolicy(
+        frozenset({"node"}), _one_of("development", "production", "test")
+    ),
+    "NODE_NO_WARNINGS": EnvironmentVariablePolicy(
+        frozenset({"node"}), _one_of("1")
+    ),
+    "NODE_DISABLE_COLORS": EnvironmentVariablePolicy(
+        frozenset({"node"}), _one_of("1")
+    ),
+    "npm_config_color": EnvironmentVariablePolicy(
+        frozenset({"node"}), _one_of("false", "0")
+    ),
+    "npm_config_progress": EnvironmentVariablePolicy(
+        frozenset({"node"}), _one_of("false", "0")
+    ),
+    "npm_config_audit": EnvironmentVariablePolicy(
+        frozenset({"node"}), _one_of("false", "0")
+    ),
+    "npm_config_fund": EnvironmentVariablePolicy(
+        frozenset({"node"}), _one_of("false", "0")
+    ),
+    "npm_config_update_notifier": EnvironmentVariablePolicy(
+        frozenset({"node"}), _one_of("false", "0")
+    ),
+}
+
+assert set(ENV_PREFIX_VARIABLE_NAMES) == set(_ENVIRONMENT_VARIABLE_POLICIES)
+
 
 @dataclass(frozen=True)
 class ShellListPolicyException:
@@ -196,45 +340,76 @@ class ShellListPolicyException:
 
     name: str
     agents: frozenset[Agent]
-    can_preserve: Callable[[list[str], list[str], list[str], list[str]], bool]
+    can_preserve: Callable[
+        [list[str], list[str], list[str], list[str], list[str]], bool
+    ]
 
 
 def _can_preserve_gofmt_before_go_test(
     parts: list[str],
+    raw_parts: list[str],
     _following_rewrites: list[str],
     remaining_segments: list[str],
     remaining_separators: list[str],
 ) -> bool:
-    if not _safe_gofmt_write_args(parts):
+    parsed = _split_environment_prefix(parts, raw_parts)
+    if parsed is None:
+        return False
+    assignments, command_parts = parsed
+    if not _assignments_allowed_for_stack(assignments, "go"):
+        return False
+    if not _safe_gofmt_write_args(command_parts):
         return False
     if not remaining_segments or not remaining_separators or remaining_separators[0] != "&&":
         return False
     next_parts = _split_command(remaining_segments[0])
-    if not next_parts:
+    next_raw_parts = _split_raw_shell_words(remaining_segments[0])
+    if not next_parts or next_raw_parts is None:
         return False
-    next_rewrite = _rewrite_segment(next_parts, "codex")
-    return next_rewrite is not None and next_rewrite.startswith("rtk go test")
+    parsed_next = _split_environment_prefix(next_parts, next_raw_parts)
+    if parsed_next is None:
+        return False
+    _next_assignments, next_command_parts = parsed_next
+    next_rewrite = _rewrite_segment(next_parts, "codex", next_raw_parts)
+    return (
+        next_rewrite is not None
+        and len(next_command_parts) > 1
+        and Path(next_command_parts[0]).name.lower() == "go"
+        and next_command_parts[1] == "test"
+    )
 
 
 def _can_preserve_cargo_fmt_before_cargo_validation(
     parts: list[str],
+    raw_parts: list[str],
     _following_rewrites: list[str],
     remaining_segments: list[str],
     remaining_separators: list[str],
 ) -> bool:
-    if not _safe_cargo_fmt_write_args(parts):
+    parsed = _split_environment_prefix(parts, raw_parts)
+    if parsed is None:
+        return False
+    assignments, command_parts = parsed
+    if not _assignments_allowed_for_stack(assignments, "rust"):
+        return False
+    if not _safe_cargo_fmt_write_args(command_parts):
         return False
     if not remaining_segments or not remaining_separators or remaining_separators[0] != "&&":
         return False
     next_parts = _split_command(remaining_segments[0])
-    if not next_parts:
+    next_raw_parts = _split_raw_shell_words(remaining_segments[0])
+    if not next_parts or next_raw_parts is None:
         return False
-    next_rewrite = _rewrite_segment(next_parts, "codex")
+    parsed_next = _split_environment_prefix(next_parts, next_raw_parts)
+    if parsed_next is None:
+        return False
+    _next_assignments, next_command_parts = parsed_next
+    next_rewrite = _rewrite_segment(next_parts, "codex", next_raw_parts)
     return (
         next_rewrite is not None
-        and len(next_parts) > 1
-        and Path(next_parts[0]).name.lower() == "cargo"
-        and next_parts[1] in {"test", "check", "clippy"}
+        and len(next_command_parts) > 1
+        and Path(next_command_parts[0]).name.lower() == "cargo"
+        and next_command_parts[1] in {"test", "check", "clippy"}
     )
 
 
@@ -269,11 +444,15 @@ def is_complex_shell_command(command: str) -> bool:
 
 
 def is_already_rtk_wrapped(command: str) -> bool:
-    """Return True when the command already starts with the rtk executable."""
+    """Return True when assignments, if any, are followed by the rtk executable."""
     parts = _split_command(command)
-    if not parts:
+    raw_parts = _split_raw_shell_words(command.strip())
+    if not parts or raw_parts is None:
         return False
-    executable = Path(parts[0]).name.lower()
+    command_parts = _command_parts_after_environment_prefix(parts, raw_parts)
+    if not command_parts:
+        return False
+    executable = Path(command_parts[0]).name.lower()
     return executable in {"rtk", "rtk.exe"}
 
 
@@ -282,6 +461,149 @@ def _split_command(command: str) -> list[str] | None:
         return shlex.split(command.strip())
     except ValueError:
         return None
+
+
+def _split_raw_shell_words(command: str) -> list[str] | None:
+    """Split shell words while retaining their original quoting."""
+    words: list[str] = []
+    quote: str | None = None
+    escaped = False
+    word_start: int | None = None
+
+    for index, char in enumerate(command):
+        if word_start is None:
+            if char.isspace():
+                continue
+            word_start = index
+        if escaped:
+            escaped = False
+            continue
+        if quote is not None:
+            if char == quote:
+                quote = None
+            elif quote == '"' and char == "\\":
+                escaped = True
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            continue
+        if char.isspace():
+            words.append(command[word_start:index])
+            word_start = None
+
+    if quote is not None or escaped:
+        return None
+    if word_start is not None:
+        words.append(command[word_start:])
+    return words
+
+
+def _split_environment_prefix(
+    parts: list[str],
+    raw_parts: list[str] | None = None,
+) -> tuple[list[EnvironmentAssignment], list[str]] | None:
+    if raw_parts is not None and len(raw_parts) != len(parts):
+        return None
+    assignments: list[EnvironmentAssignment] = []
+    seen_names: set[str] = set()
+    index = 0
+    while index < len(parts):
+        match = _ENV_PREFIX_RE.fullmatch(parts[index])
+        if match is None:
+            break
+        name, value = match.groups()
+        if raw_parts is not None and not raw_parts[index].startswith(f"{name}="):
+            break
+        if name in seen_names:
+            return None
+        seen_names.add(name)
+        assignments.append(EnvironmentAssignment(name, value))
+        index += 1
+    return assignments, parts[index:]
+
+
+def _command_parts_after_environment_prefix(
+    parts: list[str], raw_parts: list[str] | None = None
+) -> list[str]:
+    if raw_parts is not None and len(raw_parts) != len(parts):
+        return parts
+    index = 0
+    while index < len(parts):
+        match = _ENV_PREFIX_RE.fullmatch(parts[index])
+        if match is None:
+            break
+        if raw_parts is not None and not raw_parts[index].startswith(f"{match.group(1)}="):
+            break
+        index += 1
+    return parts[index:]
+
+
+def _command_stack(parts: list[str]) -> CommandStack:
+    command = Path(parts[0]).name.lower()
+    if command == "cargo":
+        return "rust"
+    if command == "go":
+        return "go"
+    if command == "pytest":
+        return "pytest"
+    if command in {"pip", "ruff", "mypy"}:
+        return "python"
+    if command in {
+        "npm",
+        "pnpm",
+        "npx",
+        "prisma",
+        "eslint",
+        "vitest",
+        "jest",
+        "tsc",
+        "prettier",
+        "next",
+    }:
+        return "node"
+    return "generic"
+
+
+def _assignments_allowed_for_stack(
+    assignments: list[EnvironmentAssignment], stack: CommandStack
+) -> bool:
+    for assignment in assignments:
+        policy = _ENVIRONMENT_VARIABLE_POLICIES.get(assignment.name)
+        if (
+            policy is None
+            or stack not in policy.stacks
+            or not policy.is_valid_value(assignment.value)
+        ):
+            return False
+    return True
+
+
+def _render_environment_prefix(assignments: list[EnvironmentAssignment]) -> str:
+    return " ".join(
+        f"{assignment.name}={shlex.quote(assignment.value)}"
+        for assignment in assignments
+    )
+
+
+def _render_environment_command(
+    assignments: list[EnvironmentAssignment], command: str
+) -> str:
+    if not assignments:
+        return command
+    return f"{_render_environment_prefix(assignments)} {command}"
+
+
+def _render_preserved_segment(parts: list[str], raw_parts: list[str]) -> str | None:
+    parsed = _split_environment_prefix(parts, raw_parts)
+    if parsed is None:
+        return None
+    assignments, command_parts = parsed
+    if not command_parts:
+        return None
+    return _render_environment_command(assignments, _join(command_parts))
 
 
 def _join(parts: list[str]) -> str:
@@ -314,9 +636,10 @@ def rewrite_command_for_agent(command: str, agent: Agent = "codex") -> str | Non
     segments, separators = shell_list
     if not separators:
         parts = _split_command(segments[0])
-        if not parts:
+        raw_parts = _split_raw_shell_words(segments[0])
+        if not parts or raw_parts is None:
             return None
-        return _rewrite_segment(parts, agent)
+        return _rewrite_segment(parts, agent, raw_parts)
 
     return _rewrite_shell_list(segments, separators, agent)
 
@@ -406,16 +729,19 @@ def _append_shell_segment(command: str, start: int, end: int, segments: list[str
 
 def _rewrite_shell_list(segments: list[str], separators: list[str], agent: Agent) -> str | None:
     segment_parts: list[list[str]] = []
+    segment_raw_parts: list[list[str]] = []
     for segment in segments:
         parts = _split_command(segment)
-        if not parts:
+        raw_parts = _split_raw_shell_words(segment)
+        if not parts or raw_parts is None:
             return None
         segment_parts.append(parts)
+        segment_raw_parts.append(raw_parts)
 
     rewritten_segments: list[str | None] = []
     changed = False
-    for segment in segment_parts:
-        rewrite = _rewrite_segment(segment, agent)
+    for segment, raw_segment in zip(segment_parts, segment_raw_parts):
+        rewrite = _rewrite_segment(segment, agent, raw_segment)
         if rewrite is None:
             if not _can_preserve_shell_list_segment(segment):
                 rewritten_segments.append(None)
@@ -435,12 +761,18 @@ def _rewrite_shell_list(segments: list[str], separators: list[str], agent: Agent
         if not _can_apply_shell_list_policy_exception(
             agent,
             segment,
+            segment_raw_parts[index],
             [item for item in rewritten_segments[index + 1 :] if item is not None],
             segments[index + 1 :],
             separators[index:],
         ):
             return None
-        rewritten_segments[index] = _join(segment)
+        preserved_segment = _render_preserved_segment(
+            segment, segment_raw_parts[index]
+        )
+        if preserved_segment is None:
+            return None
+        rewritten_segments[index] = preserved_segment
 
     if any(segment is None for segment in rewritten_segments):
         return None
@@ -455,6 +787,7 @@ def _rewrite_shell_list(segments: list[str], separators: list[str], agent: Agent
 def _can_apply_shell_list_policy_exception(
     agent: Agent,
     parts: list[str],
+    raw_parts: list[str],
     rewritten_segments: list[str],
     remaining_segments: list[str],
     remaining_separators: list[str],
@@ -463,6 +796,7 @@ def _can_apply_shell_list_policy_exception(
         agent in exception.agents
         and exception.can_preserve(
             parts,
+            raw_parts,
             rewritten_segments,
             remaining_segments,
             remaining_separators,
@@ -471,18 +805,30 @@ def _can_apply_shell_list_policy_exception(
     )
 
 
-def _rewrite_segment(parts: list[str], agent: Agent) -> str | None:
+def _rewrite_segment(
+    parts: list[str], agent: Agent, raw_parts: list[str] | None = None
+) -> str | None:
     if not parts:
         return None
-    if _has_env_assignment_prefix(parts):
+    parsed = _split_environment_prefix(parts, raw_parts)
+    if parsed is None:
         return None
-    if Path(parts[0]).name.lower() == "env" and len(parts) > 1:
+    assignments, command_parts = parsed
+    if not command_parts:
         return None
-    if _is_rtk_wrapped_parts(parts):
+    if Path(command_parts[0]).name.lower() == "env" and len(command_parts) > 1:
         return None
-    if _has_common_deny(parts):
+    if _is_rtk_wrapped_parts(command_parts):
         return None
-    return _rewrite_parts(parts, agent)
+    if _has_common_deny(command_parts):
+        return None
+
+    rewrite = _rewrite_parts(command_parts, agent)
+    if rewrite is None:
+        return None
+    if not _assignments_allowed_for_stack(assignments, _command_stack(command_parts)):
+        return None
+    return _render_environment_command(assignments, rewrite)
 
 
 def _has_unsafe_shell_expansion(command: str) -> bool:

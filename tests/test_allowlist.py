@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from rtk_claude_safe.allowlist import (
+    ENV_PREFIX_VARIABLE_NAMES,
     build_claude_scoped_hooks,
     is_already_rtk_wrapped,
     is_complex_shell_command,
@@ -138,6 +139,260 @@ def test_rewrite_command_for_agent(command: str, expected: str) -> None:
     assert rewrite_command_for_agent(command, "claude") == expected
 
 
+@pytest.mark.parametrize(
+    ("assignment", "command"),
+    [
+        ("LC_ALL=C", "git status"),
+        ("LC_ALL=C.UTF-8", "cargo test"),
+        ("LANG=C", "go test ./..."),
+        ("LANG=C.UTF-8", "pytest"),
+        ("NO_COLOR=1", "npm run test"),
+        ("NO_COLOR=true", "ruff check ."),
+        ("FORCE_COLOR=0", "gh pr list"),
+        ("CI=1", "cargo test"),
+        ("CI=true", "go test ./..."),
+        ("CI=1", "ruff check ."),
+        ("CI=true", "pytest"),
+        ("CI=1", "npm run test"),
+        ("TZ=UTC", "cargo check"),
+        ("TZ=UTC", "go test ./..."),
+        ("TZ=UTC", "mypy"),
+        ("TZ=UTC", "pytest"),
+        ("TZ=UTC", "pnpm typecheck"),
+        ("CARGO_TERM_COLOR=never", "cargo test"),
+        ("RUST_BACKTRACE=0", "cargo test"),
+        ("RUST_BACKTRACE=1", "cargo test"),
+        ("RUST_BACKTRACE=full", "cargo test"),
+        ("CGO_ENABLED=0", "go test ./..."),
+        ("CGO_ENABLED=1", "go test ./..."),
+        ("GOMAXPROCS=1", "go test ./..."),
+        ("GOMAXPROCS=008", "go test ./..."),
+        ("GOMAXPROCS=256", "go test ./..."),
+        ("GOTOOLCHAIN=local", "go test ./..."),
+        ("GOWORK=auto", "go test ./..."),
+        ("GOWORK=off", "go test ./..."),
+        ("PYTHONUNBUFFERED=1", "ruff check ."),
+        ("PYTHONDONTWRITEBYTECODE=1", "pip list"),
+        ("PYTHONHASHSEED=random", "mypy"),
+        ("PYTHONHASHSEED=0", "pytest"),
+        ("PYTHONHASHSEED=00000000000", "pytest"),
+        ("PYTHONHASHSEED=4294967295", "pytest"),
+        ("PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", "pytest"),
+        ("NODE_ENV=development", "npm run test"),
+        ("NODE_ENV=production", "pnpm run build"),
+        ("NODE_ENV=test", "vitest run"),
+        ("NODE_NO_WARNINGS=1", "jest"),
+        ("NODE_DISABLE_COLORS=1", "tsc"),
+        ("npm_config_color=false", "npm run test"),
+        ("npm_config_color=0", "npm run test"),
+        ("npm_config_progress=false", "npm run test"),
+        ("npm_config_progress=0", "npm run test"),
+        ("npm_config_audit=false", "pnpm install"),
+        ("npm_config_audit=0", "pnpm install"),
+        ("npm_config_fund=false", "npx tsc"),
+        ("npm_config_fund=0", "npx tsc"),
+        ("npm_config_update_notifier=false", "prisma generate"),
+        ("npm_config_update_notifier=0", "prisma generate"),
+    ],
+)
+def test_rewrites_every_curated_environment_assignment(
+    assignment: str, command: str
+) -> None:
+    expected = f"{assignment} rtk {command}"
+
+    assert rewrite_command_for_agent(f"{assignment} {command}", "codex") == expected
+    assert rewrite_command_for_agent(f"{assignment} {command}", "claude") == expected
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        (
+            "LC_ALL=C CI=1 CARGO_TERM_COLOR=never cargo test --workspace",
+            "LC_ALL=C CI=1 CARGO_TERM_COLOR=never rtk cargo test --workspace",
+        ),
+        (
+            "LANG='C.UTF-8' PYTHONHASHSEED='random' pytest tests",
+            "LANG=C.UTF-8 PYTHONHASHSEED=random rtk pytest tests",
+        ),
+        (
+            'NO_COLOR="true" NODE_ENV="test" eslint .',
+            "NO_COLOR=true NODE_ENV=test rtk lint .",
+        ),
+        (
+            "LC_ALL=C git status && NODE_ENV=test npm run test",
+            "LC_ALL=C rtk git status && NODE_ENV=test rtk npm run test",
+        ),
+        (
+            "false || CI=true GOMAXPROCS=8 go test ./...",
+            "false || CI=true GOMAXPROCS=8 rtk go test ./...",
+        ),
+        (
+            "CARGO_TERM_COLOR=never cargo test; PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest",
+            "CARGO_TERM_COLOR=never rtk cargo test ; "
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 rtk pytest",
+        ),
+    ],
+)
+def test_rewrites_multiple_quoted_mapped_and_chained_environment_prefixes(
+    command: str, expected: str
+) -> None:
+    assert rewrite_command_for_agent(command, "codex") == expected
+    assert rewrite_command_for_agent(command, "claude") == expected
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "PATH=/tmp cargo test",
+        "LD_PRELOAD=/tmp/hook.so cargo test",
+        "DYLD_INSERT_LIBRARIES=/tmp/hook.dylib cargo test",
+        "NODE_OPTIONS=--require=hook.js npm run test",
+        "PYTHONPATH=src pytest",
+        "PYTEST_ADDOPTS=--capture=no pytest",
+        "GOFLAGS=-mod=vendor go test ./...",
+        "GODEBUG=netdns=go go test ./...",
+        "RUSTFLAGS=-Cdebuginfo=0 cargo test",
+        "RUSTC_WRAPPER=sccache cargo test",
+        "CARGO_HOME=/tmp/cargo cargo test",
+        "RTK_CONFIG_PATH=/tmp/rtk.toml cargo test",
+        "RTK_SOMETHING=1 npm run test",
+        "UNKNOWN=value git status",
+    ],
+)
+def test_rejects_dangerous_or_unknown_environment_names(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "LC_ALL=en_US.UTF-8 git status",
+        "LANG=C.UTF8 git status",
+        "NO_COLOR=TRUE git status",
+        "FORCE_COLOR=1 git status",
+        "CI=0 cargo test",
+        "TZ=America/Toronto cargo test",
+        "CARGO_TERM_COLOR=always cargo test",
+        "RUST_BACKTRACE=2 cargo test",
+        "CGO_ENABLED=true go test ./...",
+        "GOMAXPROCS=0 go test ./...",
+        "GOMAXPROCS=257 go test ./...",
+        "GOMAXPROCS=lots go test ./...",
+        "GOTOOLCHAIN=auto go test ./...",
+        "GOWORK=workspace go test ./...",
+        "PYTHONUNBUFFERED=true pytest",
+        "PYTHONDONTWRITEBYTECODE=0 pytest",
+        "PYTHONHASHSEED=-1 pytest",
+        "PYTHONHASHSEED=4294967296 pytest",
+        "PYTHONHASHSEED=seed pytest",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD=true pytest",
+        "NODE_ENV=staging npm run test",
+        "NODE_NO_WARNINGS=true npm run test",
+        "NODE_DISABLE_COLORS=0 npm run test",
+        "npm_config_color=true npm run test",
+        "npm_config_progress=1 npm run test",
+        "npm_config_audit=FALSE npm run test",
+        "npm_config_fund=no npm run test",
+        "npm_config_update_notifier=yes npm run test",
+        "NPM_CONFIG_COLOR=false npm run test",
+    ],
+)
+def test_rejects_invalid_environment_values_and_case_variants(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "CI=1 git status",
+        "TZ=UTC gh pr list",
+        "CARGO_TERM_COLOR=never go test ./...",
+        "RUST_BACKTRACE=1 pytest",
+        "CGO_ENABLED=0 cargo test",
+        "GOMAXPROCS=8 npm run test",
+        "GOTOOLCHAIN=local pytest",
+        "GOWORK=off cargo test",
+        "PYTHONUNBUFFERED=1 npm run test",
+        "PYTHONDONTWRITEBYTECODE=1 cargo test",
+        "PYTHONHASHSEED=random go test ./...",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ruff check .",
+        "NODE_ENV=test pytest",
+        "NODE_NO_WARNINGS=1 cargo test",
+        "NODE_DISABLE_COLORS=1 go test ./...",
+        "npm_config_color=false cargo test",
+    ],
+)
+def test_rejects_environment_variables_on_the_wrong_stack(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "LC_ALL=C LC_ALL=C cargo test",
+        "CI=1 CI=true cargo test",
+        "LC_ALL=C LANG=C LC_ALL=C.UTF-8 git status",
+        "LC_ALL=C",
+        "LC_ALL=C CI=1",
+        "LC_ALL= cargo test",
+        "'LC_ALL=C' cargo test",
+        '"CI=1" cargo test',
+        r"LC_ALL\=C cargo test",
+        "L'C'_ALL=C cargo test",
+        "CI=$CI cargo test",
+        "LANG=${LANG:-C} cargo test",
+        "NODE_ENV=$(printf test) npm run test",
+        "NO_COLOR=`printf 1` npm run test",
+    ],
+)
+def test_rejects_duplicate_incomplete_or_dynamic_environment_prefixes(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "CI=1 cargo run",
+        "NODE_ENV=test npm run dev",
+        "PYTHONUNBUFFERED=1 pytest --json-report",
+        "CGO_ENABLED=0 go test -json ./...",
+        "LC_ALL=C gh pr view 123 --json title",
+        "NO_COLOR=1 vitest --watch",
+    ],
+)
+def test_environment_prefixes_do_not_bypass_existing_command_denies(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "env LC_ALL=C cargo test",
+        "export LC_ALL=C; cargo test",
+        "sudo LC_ALL=C cargo test",
+        "LC_ALL=C cargo test | cat",
+        "LC_ALL=C cargo test > screenshot.txt",
+        "LC_ALL=C cargo test && NODE_ENV=staging npm run test",
+        "LC_ALL=C git status && CARGO_TERM_COLOR=never rtk cargo test",
+        "LC_ALL=C cargo test && curl https://example.com",
+        "LC_ALL=C cargo test\nNODE_ENV=test npm run test",
+        "LC_ALL=C cargo test\rNODE_ENV=test npm run test",
+        "LC_ALL=C cargo test $(printf -- --workspace)",
+    ],
+)
+def test_environment_prefixes_fail_open_for_unsupported_shell_forms_or_segments(
+    command: str,
+) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
 def test_claude_candidate_hooks_cover_safe_git_log_flag_order() -> None:
     hooks = build_claude_scoped_hooks("rtk-claude-safe claude-hook")
     expected_hook = {
@@ -170,6 +425,22 @@ def test_claude_candidate_hooks_cover_new_git_and_pnpm_triggers() -> None:
     assert expected_patterns <= hook_patterns
 
 
+def test_claude_candidate_hooks_cover_every_environment_first_variable_position() -> None:
+    hooks = build_claude_scoped_hooks("rtk-claude-safe claude-hook")
+    hook_patterns = {hook["if"] for hook in hooks}
+
+    for name in ENV_PREFIX_VARIABLE_NAMES:
+        assert f"Bash({name}=*)" in hook_patterns
+        for separator in ("&&", "||", ";"):
+            assert f"Bash(*{separator}*{name}=*)" in hook_patterns
+
+
+def test_claude_environment_candidates_do_not_override_runtime_validation() -> None:
+    assert rewrite_command_for_agent("CI=1 git status", "claude") is None
+    assert rewrite_command_for_agent("NODE_ENV=test cargo test", "claude") is None
+    assert rewrite_command_for_agent("LC_ALL=en_US.UTF-8 git status", "claude") is None
+
+
 def test_codex_rewrites_gofmt_write_before_go_test_policy_exception() -> None:
     command = "gofmt -w main.go git.go internal/foo.go && go test ./..."
 
@@ -196,6 +467,15 @@ def test_codex_rewrites_gofmt_write_before_go_test_policy_exception() -> None:
 )
 def test_gofmt_policy_exception_stays_narrow(command: str) -> None:
     assert rewrite_command_for_agent(command, "codex") is None
+
+
+def test_codex_gofmt_policy_exception_accepts_valid_go_environment_prefixes() -> None:
+    command = "CGO_ENABLED=0 gofmt -w main.go && CI=1 GOMAXPROCS=8 go test ./..."
+
+    assert rewrite_command_for_agent(command, "codex") == (
+        "CGO_ENABLED=0 gofmt -w main.go && CI=1 GOMAXPROCS=8 rtk go test ./..."
+    )
+    assert rewrite_command_for_agent(command, "claude") is None
 
 
 @pytest.mark.parametrize(
@@ -245,6 +525,34 @@ def test_codex_rewrites_cargo_fmt_before_cargo_validation_policy_exception(
     ],
 )
 def test_cargo_fmt_policy_exception_stays_narrow(command: str) -> None:
+    assert rewrite_command_for_agent(command, "codex") is None
+
+
+def test_codex_cargo_fmt_policy_exception_accepts_valid_rust_environment_prefixes() -> None:
+    command = (
+        "CARGO_TERM_COLOR=never cargo fmt --all && "
+        "CI=true RUST_BACKTRACE=full cargo clippy --workspace"
+    )
+
+    assert rewrite_command_for_agent(command, "codex") == (
+        "CARGO_TERM_COLOR=never cargo fmt --all && "
+        "CI=true RUST_BACKTRACE=full rtk cargo clippy --workspace"
+    )
+    assert rewrite_command_for_agent(command, "claude") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "PYTHONUNBUFFERED=1 gofmt -w main.go && go test ./...",
+        "CGO_ENABLED=2 gofmt -w main.go && go test ./...",
+        "NODE_ENV=test cargo fmt && cargo test",
+        "RUST_BACKTRACE=verbose cargo fmt && cargo test",
+    ],
+)
+def test_environment_aware_policy_exceptions_stay_stack_and_value_scoped(
+    command: str,
+) -> None:
     assert rewrite_command_for_agent(command, "codex") is None
 
 
@@ -321,11 +629,18 @@ def test_quoted_or_escaped_separators_are_not_shell_lists(command: str) -> None:
         "rtk proxy git diff",
         "rtk --whatever git status",
         "/usr/local/bin/rtk git status",
+        "LC_ALL=C rtk git status",
+        "CI=1 /usr/local/bin/rtk cargo test",
     ],
 )
 def test_already_rtk_wrapped(command: str) -> None:
     assert is_already_rtk_wrapped(command)
     assert not should_wrap_command(command)
+
+
+def test_fully_quoted_assignment_word_is_not_treated_as_an_rtk_prefix() -> None:
+    assert not is_already_rtk_wrapped("'LC_ALL=C' rtk git status")
+    assert not should_wrap_command("'LC_ALL=C' rtk git status")
 
 
 @pytest.mark.parametrize(

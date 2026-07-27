@@ -45,6 +45,28 @@ def test_codex_hook_uses_mapped_rewrite_command() -> None:
     }
 
 
+def test_codex_hook_rewrites_environment_prefix_and_preserves_extra_input() -> None:
+    rc, output = _run_hook(
+        {
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "NO_COLOR=true NODE_ENV=test eslint .",
+                "description": "lint without color",
+            },
+        }
+    )
+
+    assert rc == 0
+    assert json.loads(output)["hookSpecificOutput"] == {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "allow",
+        "updatedInput": {
+            "command": "NO_COLOR=true NODE_ENV=test rtk lint .",
+            "description": "lint without color",
+        },
+    }
+
+
 def test_codex_hook_rewrites_allowlisted_segments_in_shell_list() -> None:
     rc, output = _run_hook(
         {"tool_name": "Bash", "tool_input": {"command": "cd app && npm run test && git status"}}
@@ -189,6 +211,24 @@ def test_codex_hook_emits_nothing_for_risky_subset() -> None:
 
 def test_codex_hook_emits_nothing_for_already_wrapped_command() -> None:
     rc, output = _run_hook({"tool_name": "Bash", "tool_input": {"command": "rtk git status"}})
+
+    assert rc == 0
+    assert output == ""
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "CI=1 git status",
+        "NODE_ENV=staging npm run test",
+        "LC_ALL=C rtk git status",
+        "LC_ALL=C git status && NODE_ENV=staging npm run test",
+    ],
+)
+def test_codex_hook_emits_nothing_for_invalid_environment_prefixes(command: str) -> None:
+    rc, output = _run_hook(
+        {"tool_name": "Bash", "tool_input": {"command": command}}
+    )
 
     assert rc == 0
     assert output == ""
