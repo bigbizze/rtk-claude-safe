@@ -9,7 +9,7 @@ import re
 import shlex
 from typing import Literal
 
-ManagedHook = Literal["claude", "codex"]
+ManagedHook = Literal["claude", "codex", "codex-subagent-depth"]
 
 _ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _PYTHON_RE = re.compile(r"^python(?:\d+(?:\.\d+)?)?(?:\.exe)?$", re.IGNORECASE)
@@ -62,7 +62,7 @@ def _is_rtk_claude_hook(tokens: list[str]) -> bool:
 
 
 def _is_safe_wrapper(tokens: list[str], hook: ManagedHook) -> bool:
-    subcommand = f"{hook}-hook"
+    subcommand = "subagent-depth-hook" if hook == "codex-subagent-depth" else f"{hook}-hook"
     if len(tokens) == 2 and _basename(tokens[0]) in {"rtk-claude-safe", "rtk-claude-safe.exe"}:
         return tokens[1] == subcommand
     if (

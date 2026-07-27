@@ -166,6 +166,47 @@ example `gofmt -w main.go git.go && rtk go test ./...`; and `cargo fmt` or `carg
 immediately before `cargo test`, `cargo check`, or `cargo clippy`, which rewrites only the Cargo
 validation segment.
 
+### Codex Subagent Depth Enforcement
+
+`rtk-claude-safe enforce-subagent-depth` installs a separate Codex hook set that enforces
+`agents.max_depth` for spawned subagents using local SQLite state:
+
+```bash
+rtk-claude-safe enforce-subagent-depth
+```
+
+The command creates `~/.codex/rtk-claude-safe/subagent-depth.sqlite` and patches
+`~/.codex/hooks.json` with managed `SessionStart`, `PreToolUse`, and `PostToolUse` handlers.
+After installing, open Codex CLI, run `/hooks`, and trust the new `rtk-claude-safe` subagent depth
+hooks. The command reports "configured, pending activation" until a new Codex session loads and
+trusts those handlers.
+
+Depth enforcement treats the root conversation as depth 0. Codex 0.144.6 requires
+`agents.max_depth >= 1`; with `agents.max_depth = 1`, only root-created subagents are allowed, and
+those subagents cannot spawn another subagent. Values 2 and higher allow that many nested spawned
+agent levels. If the key is absent, the hook records ancestry but stays dormant.
+
+The hook resolves `agents.max_depth` from trusted project config, then user config, then system
+config. Project `.codex/config.toml` files are ignored unless the project is trusted in
+`~/.codex/config.toml`. Numeric changes apply on the next spawn check in a running session.
+Removing the key from an active config keeps the last valid value until the next `SessionStart`.
+Malformed configured values fail closed for subagent spawns.
+
+To remove the hook set:
+
+```bash
+rtk-claude-safe remove-subagent-depth-enforcement
+```
+
+Removal writes a durable disabled marker before editing hooks, removes only managed subagent-depth
+hook entries, and deletes SQLite ancestry state. Already-loaded handlers check the disabled marker
+before doing work.
+
+This feature is scoped to local Codex CLI and `codex exec` on Linux, macOS, and WSL for Codex
+`>=0.144.6,<0.145.0`. It is a guardrail, not a security boundary. It does not cover native
+Windows, multi-agent V2, IDE/App/Work mode, disabled or managed-only hooks, profiles, custom-agent
+or `-c` depth overrides, or tool paths that bypass local hooks.
+
 ### Codex SQLite Log Maintenance
 
 `init` does not modify Codex's SQLite log database. The log repair commands are explicit because
@@ -219,6 +260,8 @@ rtk_claude_safe/
 ├── cli.py             # argparse entry point
 ├── codex_hook.py      # Codex stdin/stdout PreToolUse hook handler
 ├── codex_settings.py  # idempotent Codex hooks.json patcher
+├── codex_subagent_depth.py          # SQLite-backed Codex subagent depth hook runtime
+├── codex_subagent_depth_settings.py # installer/remover for subagent depth hooks
 ├── codex_sqlite.py    # guarded Codex logs_2.sqlite repair, revert, and vacuum commands
 ├── hook_command.py    # stable hook command path construction
 ├── hooks.py           # compatibility shim
