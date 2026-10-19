@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from rtk_claude_safe.allowlist import (
-    build_claude_scoped_hooks,
     is_already_rtk_wrapped,
     is_complex_shell_command,
     matches_allowlist,
@@ -136,38 +135,6 @@ def test_does_not_match_allowlist(command: str) -> None:
 def test_rewrite_command_for_agent(command: str, expected: str) -> None:
     assert rewrite_command_for_agent(command, "codex") == expected
     assert rewrite_command_for_agent(command, "claude") == expected
-
-
-def test_claude_candidate_hooks_cover_safe_git_log_flag_order() -> None:
-    hooks = build_claude_scoped_hooks("rtk-claude-safe claude-hook")
-    expected_hook = {
-        "type": "command",
-        "command": "rtk-claude-safe claude-hook",
-        "if": "Bash(git log*)",
-    }
-
-    assert expected_hook in hooks
-    assert rewrite_command_for_agent("git log -n 20 --oneline", "claude") == (
-        "rtk git log -n 20 --oneline"
-    )
-
-
-def test_claude_candidate_hooks_cover_new_git_and_pnpm_triggers() -> None:
-    hooks = build_claude_scoped_hooks("rtk-claude-safe claude-hook")
-    expected_patterns = {
-        "Bash(git diff --check*)",
-        "Bash(git rev-parse HEAD*)",
-        "Bash(git branch --show-current*)",
-        "Bash(git branch -vv*)",
-        "Bash(git branch --list*)",
-        "Bash(pnpm typecheck*)",
-        "Bash(pnpm check*)",
-        "Bash(pnpm boundaries*)",
-        "Bash(pnpm --filter *)",
-    }
-
-    hook_patterns = {hook["if"] for hook in hooks}
-    assert expected_patterns <= hook_patterns
 
 
 def test_codex_rewrites_gofmt_write_before_go_test_policy_exception() -> None:

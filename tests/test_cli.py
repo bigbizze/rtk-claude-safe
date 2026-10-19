@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rtk_claude_safe import cli
+from rtk_claude_safe import management_cli as cli
 from rtk_claude_safe.codex_sqlite import VacuumResult
 
 
@@ -125,7 +125,7 @@ def test_cli_rolls_back_all_targets_when_codex_patch_fails(monkeypatch, tmp_path
     assert claude_settings.read_text(encoding="utf-8") == '{"old":"claude"}\n'
     assert codex_hooks.read_text(encoding="utf-8") == '{"old":"codex"}\n'
     captured = capsys.readouterr()
-    assert "patched scoped Claude" not in captured.out
+    assert "patched Claude" not in captured.out
 
 
 def test_cli_explicit_settings_does_not_touch_default_settings(monkeypatch, tmp_path) -> None:
@@ -381,18 +381,24 @@ def test_vacuum_codex_sqlite_command_passes_backup_flag(monkeypatch, tmp_path, c
 
 
 def test_hidden_codex_hook_subcommand_dispatches(monkeypatch) -> None:
-    monkeypatch.setattr(cli, "codex_hook_main", lambda: 0)
+    from rtk_claude_safe import cli as dispatcher, codex_hook
 
-    assert cli.main(["codex-hook"]) == 0
+    monkeypatch.setattr(codex_hook, "main", lambda: 0)
+
+    assert dispatcher.main(["codex-hook"]) == 0
 
 
 def test_hidden_claude_hook_subcommand_dispatches(monkeypatch) -> None:
-    monkeypatch.setattr(cli, "claude_hook_main", lambda: 0)
+    from rtk_claude_safe import cli as dispatcher, claude_hook
 
-    assert cli.main(["claude-hook"]) == 0
+    monkeypatch.setattr(claude_hook, "main", lambda: 0)
+
+    assert dispatcher.main(["claude-hook"]) == 0
 
 
 def test_hidden_subagent_depth_hook_subcommand_dispatches(monkeypatch) -> None:
-    monkeypatch.setattr(cli, "subagent_depth_hook_main", lambda: 0)
+    from rtk_claude_safe import cli as dispatcher, codex_subagent_depth
 
-    assert cli.main(["subagent-depth-hook"]) == 0
+    monkeypatch.setattr(codex_subagent_depth, "main", lambda: 0)
+
+    assert dispatcher.main(["subagent-depth-hook"]) == 0

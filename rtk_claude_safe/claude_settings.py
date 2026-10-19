@@ -1,4 +1,4 @@
-"""Patch ~/.claude/settings.json so rtk's PreToolUse hook is scoped, not catch-all."""
+"""Patch ~/.claude/settings.json with one safe RTK PreToolUse hook."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rtk_claude_safe.allowlist import build_claude_scoped_hooks
 from rtk_claude_safe.hook_command import build_hook_command
 from rtk_claude_safe.managed_hooks import is_managed_hook_command
 
@@ -71,13 +70,13 @@ def patch_settings(path: Path = DEFAULT_SETTINGS_PATH, command: str | None = Non
         if isinstance(entry, dict) and entry.get("matcher") == "Bash":
             bash_entries.append(entry)
 
-    scoped_hooks = build_claude_scoped_hooks(command or build_claude_hook_command())
+    hook_entry = {"type": "command", "command": command or build_claude_hook_command()}
     if not bash_entries:
-        pre_tool_use.append({"matcher": "Bash", "hooks": scoped_hooks})
+        pre_tool_use.append({"matcher": "Bash", "hooks": [hook_entry]})
     else:
         for entry in bash_entries:
             _remove_rtk_hooks_from_bash_matcher(entry, path)
-        bash_entries[0]["hooks"].extend(scoped_hooks)
+        bash_entries[0]["hooks"].append(hook_entry)
 
     changed = settings != original
     if changed:

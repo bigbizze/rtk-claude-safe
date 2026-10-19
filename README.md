@@ -14,19 +14,28 @@ rtk-claude-safe init
 RTK's broad built-in hook integration can put every Bash command on a rewrite path. That sounds
 fine until you actually read the RTK issue tracker, and it is not. There are several distinct
 classes of "the agent confidently acts on wrong output" bugs that are live in current RTK releases.
-A catch-all hook puts every one of them on the critical path.
+A broad rewrite policy can expose commands to these failures.
 
 The fix isn't to stop using rtk — its filtering really does save 60-90% of tokens on noisy
-commands. The fix is to scope the hook to the commands where the filter is well-trodden and
+commands. The fix is to restrict rewrites to commands where the filter is well-trodden and
 correctness-preserving, and to leave everything else alone.
 
 That's all this package does: install or validate a supported stable RTK binary, detect supported
 global agent config folders, and patch only the agents that are already present. For Claude Code,
-it writes scoped `Bash(<pattern>*)` candidate matchers in `~/.claude/settings.json` that call
+it writes one `Bash` `PreToolUse` hook in `~/.claude/settings.json` that calls
 `rtk-claude-safe claude-hook`. For Codex, it installs one `^Bash$` `PreToolUse` hook in
 `~/.codex/hooks.json`. Both hook executables parse `tool_input.command`, apply the same fail-open
 safety classifier, and emit direct `updatedInput.command` rewrites only for known safe command
 shapes.
+
+Hook commands load only their runtime modules. Installer and database maintenance imports
+are deferred until a management command runs.
+
+Claude's `if` filters are best-effort: when Claude cannot determine which commands a Bash
+input runs, it can run every candidate hook. With hundreds of candidate entries, this can
+start hundreds of wrapper processes for one tool call. Installation replaces the old candidate
+list with one hook, without `if` conditions. The wrapper's own safety classifier decides whether
+to rewrite each command. Unsupported or uncertain commands remain unchanged.
 
 ### The specific failure modes that drove the allowlist
 
@@ -79,11 +88,11 @@ read-only pip inventory commands, and a few small utilities (`tree`, `wc`, `env`
    API digests, checksums, and archive contents, then atomically installs `rtk` to
    `~/.local/bin/rtk`. The downloaded binary must be reachable on `PATH` before config is patched.
 3. **Patch Claude Code when present.** Finds or creates the global `PreToolUse` matcher groups,
-   removes older RTK-managed hooks, and adds the current scoped candidate list once. Those scoped
-   hooks call `rtk-claude-safe claude-hook`, which rejects unsupported or uncertain shell syntax and
+   removes older RTK-managed hooks, and adds one command hook under `Bash`. This
+   hook calls `rtk-claude-safe claude-hook`, which rejects unsupported or uncertain shell syntax and
    emits direct `updatedInput.command` rewrites. Top-level `&&`, `||`, and `;` chains are classified
    segment by segment, so a command such as `cd app && npm run test` becomes
-   `cd app && rtk npm run test`. Idempotent — running again is a no-op if the scoped hooks are
+   `cd app && rtk npm run test`. Idempotent — running again is a no-op if the hook is
    already current. Other user hooks under the same matcher are preserved.
 4. **Patch Codex when present.** Creates or updates `~/.codex/hooks.json` with one `^Bash$`
    `PreToolUse` command hook that calls `rtk-claude-safe codex-hook`. Other hook events, matcher

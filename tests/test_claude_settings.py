@@ -4,7 +4,6 @@ import json
 
 import pytest
 
-from rtk_claude_safe.allowlist import SCOPED_PATTERNS, build_claude_scoped_hooks
 from rtk_claude_safe.claude_settings import RTK_COMMAND, patch_settings
 
 SAFE_CLAUDE_COMMAND = "rtk-claude-safe claude-hook"
@@ -26,36 +25,16 @@ def _rtk_entries(data, command: str):
     return entries
 
 
-def test_claude_settings_create_scoped_hooks_from_scratch(tmp_path) -> None:
+def test_claude_settings_create_one_hook_from_scratch(tmp_path) -> None:
     settings_path = tmp_path / ".claude" / "settings.json"
 
     assert patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
 
     data = _read(settings_path)
     assert data["hooks"]["PreToolUse"] == [
-        {"matcher": "Bash", "hooks": build_claude_scoped_hooks(SAFE_CLAUDE_COMMAND)}
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": SAFE_CLAUDE_COMMAND}]}
     ]
     assert not patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
-
-
-def test_claude_scoped_hooks_cover_chained_command_positions() -> None:
-    hooks = build_claude_scoped_hooks(SAFE_CLAUDE_COMMAND)
-
-    assert {
-        "type": "command",
-        "command": SAFE_CLAUDE_COMMAND,
-        "if": "Bash(*&&*npm run test*)",
-    } in hooks
-    assert {
-        "type": "command",
-        "command": SAFE_CLAUDE_COMMAND,
-        "if": "Bash(*||*git status*)",
-    } in hooks
-    assert {
-        "type": "command",
-        "command": SAFE_CLAUDE_COMMAND,
-        "if": "Bash(*;*git diff --stat*)",
-    } in hooks
 
 
 def test_claude_settings_remove_rtk_hooks_from_duplicate_bash_groups(tmp_path) -> None:
@@ -92,8 +71,8 @@ def test_claude_settings_remove_rtk_hooks_from_duplicate_bash_groups(tmp_path) -
     }
     assert data["hooks"]["PreToolUse"][1]["hooks"] == []
     rtk_entries = _rtk_entries(data, SAFE_CLAUDE_COMMAND)
-    assert len(rtk_entries) == len(SCOPED_PATTERNS)
-    assert rtk_entries == build_claude_scoped_hooks(SAFE_CLAUDE_COMMAND)
+    assert len(rtk_entries) == 1
+    assert rtk_entries == [{"type": "command", "command": SAFE_CLAUDE_COMMAND}]
 
 
 def test_claude_settings_reconcile_stale_scoped_hooks(tmp_path) -> None:
@@ -122,7 +101,7 @@ def test_claude_settings_reconcile_stale_scoped_hooks(tmp_path) -> None:
     hooks = _read(settings_path)["hooks"]["PreToolUse"][0]["hooks"]
     assert {"type": "command", "command": RTK_COMMAND, "if": "Bash(old*)"} not in hooks
     assert {"type": "command", "command": "user-hook"} in hooks
-    assert hooks[1:] == build_claude_scoped_hooks(SAFE_CLAUDE_COMMAND)
+    assert hooks[1:] == [{"type": "command", "command": SAFE_CLAUDE_COMMAND}]
 
 
 def test_claude_settings_replace_previous_version_scoped_hooks(tmp_path) -> None:
@@ -134,7 +113,11 @@ def test_claude_settings_replace_previous_version_scoped_hooks(tmp_path) -> None
                     "PreToolUse": [
                         {
                             "matcher": "Bash",
-                            "hooks": build_claude_scoped_hooks(RTK_COMMAND),
+                            "hooks": [
+                                {"type": "command", "command": SAFE_CLAUDE_COMMAND,
+                                 "if": f"Bash(old-{index}*)"}
+                                for index in range(440)
+                            ],
                         }
                     ]
                 }
@@ -147,7 +130,7 @@ def test_claude_settings_replace_previous_version_scoped_hooks(tmp_path) -> None
     assert not patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
 
     hooks = _read(settings_path)["hooks"]["PreToolUse"][0]["hooks"]
-    assert hooks == build_claude_scoped_hooks(SAFE_CLAUDE_COMMAND)
+    assert hooks == [{"type": "command", "command": SAFE_CLAUDE_COMMAND}]
 
 
 def test_claude_settings_remove_stale_safe_wrapper_paths(tmp_path) -> None:
@@ -178,7 +161,7 @@ def test_claude_settings_remove_stale_safe_wrapper_paths(tmp_path) -> None:
 
     hooks = _read(settings_path)["hooks"]["PreToolUse"][0]["hooks"]
     assert all(hook["command"] == SAFE_CLAUDE_COMMAND for hook in hooks)
-    assert hooks == build_claude_scoped_hooks(SAFE_CLAUDE_COMMAND)
+    assert hooks == [{"type": "command", "command": SAFE_CLAUDE_COMMAND}]
 
 
 @pytest.mark.parametrize(
@@ -224,7 +207,11 @@ def test_claude_settings_remove_managed_hook_variants(tmp_path, stale_command: s
     assert patch_settings(settings_path, command=SAFE_CLAUDE_COMMAND)
 
     hooks = _read(settings_path)["hooks"]["PreToolUse"][0]["hooks"]
-    assert {"type": "command", "command": stale_command} not in hooks
+    assert _rtk_entries(_read(settings_path), SAFE_CLAUDE_COMMAND) == [
+        {"type": "command", "command": SAFE_CLAUDE_COMMAND}
+    ]
+    if stale_command != SAFE_CLAUDE_COMMAND:
+        assert {"type": "command", "command": stale_command} not in hooks
     assert {"type": "command", "command": "echo rtk-claude-safe claude-hook"} in hooks
 
 
