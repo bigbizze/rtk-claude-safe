@@ -1,0 +1,626 @@
+{"command":"","agent":"claude","expected":null}
+{"command":"","agent":"codex","expected":null}
+{"command":"./cargo fmt && cargo test","agent":"claude","expected":null}
+{"command":"./cargo fmt && cargo test","agent":"codex","expected":null}
+{"command":"./cd app && git status","agent":"claude","expected":null}
+{"command":"./cd app && git status","agent":"codex","expected":null}
+{"command":"./gofmt -w main.go && go test ./...","agent":"claude","expected":null}
+{"command":"./gofmt -w main.go && go test ./...","agent":"codex","expected":null}
+{"command":"./pnpm test:unit","agent":"claude","expected":null}
+{"command":"./pnpm test:unit","agent":"codex","expected":null}
+{"command":"/tmp/PNPM typecheck","agent":"claude","expected":null}
+{"command":"/tmp/PNPM typecheck","agent":"codex","expected":null}
+{"command":"/tmp/pnpm typecheck","agent":"claude","expected":null}
+{"command":"/tmp/pnpm typecheck","agent":"codex","expected":null}
+{"command":"/usr/bin/pnpm --filter pkg test","agent":"claude","expected":null}
+{"command":"/usr/bin/pnpm --filter pkg test","agent":"codex","expected":null}
+{"command":"/usr/local/bin/rtk git status","agent":"claude","expected":null}
+{"command":"/usr/local/bin/rtk git status","agent":"codex","expected":null}
+{"command":"Bash","agent":"claude","expected":null}
+{"command":"Bash","agent":"codex","expected":null}
+{"command":"FOO=bar npm test","agent":"claude","expected":null}
+{"command":"FOO=bar npm test","agent":"codex","expected":null}
+{"command":"FOO=bar npm test && git status","agent":"claude","expected":null}
+{"command":"FOO=bar npm test && git status","agent":"codex","expected":null}
+{"command":"PNPM typecheck","agent":"claude","expected":null}
+{"command":"PNPM typecheck","agent":"codex","expected":null}
+{"command":"Pnpm --filter foo test","agent":"claude","expected":null}
+{"command":"Pnpm --filter foo test","agent":"codex","expected":null}
+{"command":"PreToolUse","agent":"claude","expected":null}
+{"command":"PreToolUse","agent":"codex","expected":null}
+{"command":"RTK safe rewrite","agent":"claude","expected":null}
+{"command":"RTK safe rewrite","agent":"codex","expected":null}
+{"command":"allow","agent":"claude","expected":null}
+{"command":"allow","agent":"codex","expected":null}
+{"command":"apply_patch","agent":"claude","expected":null}
+{"command":"apply_patch","agent":"codex","expected":null}
+{"command":"ask","agent":"claude","expected":null}
+{"command":"ask","agent":"codex","expected":null}
+{"command":"bare-command-that-does-not-exist","agent":"claude","expected":null}
+{"command":"bare-command-that-does-not-exist","agent":"codex","expected":null}
+{"command":"biome check","agent":"claude","expected":null}
+{"command":"biome check","agent":"codex","expected":null}
+{"command":"cargo build --message-format=json","agent":"claude","expected":null}
+{"command":"cargo build --message-format=json","agent":"codex","expected":null}
+{"command":"cargo fmt","agent":"claude","expected":null}
+{"command":"cargo fmt","agent":"codex","expected":null}
+{"command":"cargo fmt && cargo build --workspace","agent":"claude","expected":null}
+{"command":"cargo fmt && cargo build --workspace","agent":"codex","expected":null}
+{"command":"cargo fmt && cargo check --message-format=json","agent":"claude","expected":null}
+{"command":"cargo fmt && cargo check --message-format=json","agent":"codex","expected":null}
+{"command":"cargo fmt && cargo check -q -p kernel","agent":"claude","expected":null}
+{"command":"cargo fmt && cargo check -q -p kernel","agent":"codex","expected":"cargo fmt && rtk cargo check -q -p kernel"}
+{"command":"cargo fmt && cargo clippy --message-format=json","agent":"claude","expected":null}
+{"command":"cargo fmt && cargo clippy --message-format=json","agent":"codex","expected":null}
+{"command":"cargo fmt && cargo doc --workspace","agent":"claude","expected":null}
+{"command":"cargo fmt && cargo doc --workspace","agent":"codex","expected":null}
+{"command":"cargo fmt && cargo run","agent":"claude","expected":null}
+{"command":"cargo fmt && cargo run","agent":"codex","expected":null}
+{"command":"cargo fmt && cargo test --message-format=json","agent":"claude","expected":null}
+{"command":"cargo fmt && cargo test --message-format=json","agent":"codex","expected":null}
+{"command":"cargo fmt && cargo test -q -p kernel section_store","agent":"claude","expected":null}
+{"command":"cargo fmt && cargo test -q -p kernel section_store","agent":"codex","expected":"cargo fmt && rtk cargo test -q -p kernel section_store"}
+{"command":"cargo fmt && rtk cargo check -q -p kernel","agent":"claude","expected":null}
+{"command":"cargo fmt && rtk cargo check -q -p kernel","agent":"codex","expected":null}
+{"command":"cargo fmt && rtk cargo test -q -p kernel section_store","agent":"claude","expected":null}
+{"command":"cargo fmt && rtk cargo test -q -p kernel section_store","agent":"codex","expected":null}
+{"command":"cargo fmt --all && cargo clippy -q --workspace","agent":"claude","expected":null}
+{"command":"cargo fmt --all && cargo clippy -q --workspace","agent":"codex","expected":"cargo fmt --all && rtk cargo clippy -q --workspace"}
+{"command":"cargo fmt --all && cargo clippy -q --workspace --all-targets -- -D warnings","agent":"claude","expected":null}
+{"command":"cargo fmt --all && cargo clippy -q --workspace --all-targets -- -D warnings","agent":"codex","expected":"cargo fmt --all && rtk cargo clippy -q --workspace --all-targets -- -D warnings"}
+{"command":"cargo fmt --all && cargo test --workspace","agent":"claude","expected":null}
+{"command":"cargo fmt --all && cargo test --workspace","agent":"codex","expected":"cargo fmt --all && rtk cargo test --workspace"}
+{"command":"cargo fmt --all && rtk cargo clippy -q --workspace","agent":"claude","expected":null}
+{"command":"cargo fmt --all && rtk cargo clippy -q --workspace","agent":"codex","expected":null}
+{"command":"cargo fmt --all && rtk cargo clippy -q --workspace --all-targets -- -D warnings","agent":"claude","expected":null}
+{"command":"cargo fmt --all && rtk cargo clippy -q --workspace --all-targets -- -D warnings","agent":"codex","expected":null}
+{"command":"cargo fmt --all && rtk cargo test --workspace","agent":"claude","expected":null}
+{"command":"cargo fmt --all && rtk cargo test --workspace","agent":"codex","expected":null}
+{"command":"cargo fmt --all -- --check && cargo test --workspace","agent":"claude","expected":null}
+{"command":"cargo fmt --all -- --check && cargo test --workspace","agent":"codex","expected":null}
+{"command":"cargo fmt --check && git diff --check","agent":"claude","expected":"rtk cargo fmt --check && rtk git diff --check"}
+{"command":"cargo fmt --check && git diff --check","agent":"codex","expected":"rtk cargo fmt --check && rtk git diff --check"}
+{"command":"cargo fmt --package kernel && cargo test -p kernel","agent":"claude","expected":null}
+{"command":"cargo fmt --package kernel && cargo test -p kernel","agent":"codex","expected":null}
+{"command":"cargo fmt || cargo test","agent":"claude","expected":null}
+{"command":"cargo fmt || cargo test","agent":"codex","expected":null}
+{"command":"cargo test --message-format json","agent":"claude","expected":null}
+{"command":"cargo test --message-format json","agent":"codex","expected":null}
+{"command":"cargo test --workspace","agent":"claude","expected":"rtk cargo test --workspace"}
+{"command":"cargo test --workspace","agent":"codex","expected":"rtk cargo test --workspace"}
+{"command":"cargo test --workspace && cargo fmt","agent":"claude","expected":null}
+{"command":"cargo test --workspace && cargo fmt","agent":"codex","expected":null}
+{"command":"cd $APP_DIR && git status","agent":"claude","expected":null}
+{"command":"cd $APP_DIR && git status","agent":"codex","expected":null}
+{"command":"cd -- app && git status","agent":"claude","expected":"cd -- app && rtk git status"}
+{"command":"cd -- app && git status","agent":"codex","expected":"cd -- app && rtk git status"}
+{"command":"cd -- app && rtk git status","agent":"claude","expected":null}
+{"command":"cd -- app && rtk git status","agent":"codex","expected":null}
+{"command":"cd app && npm run test","agent":"claude","expected":"cd app && rtk npm run test"}
+{"command":"cd app && npm run test","agent":"codex","expected":"cd app && rtk npm run test"}
+{"command":"cd app && npm run test && git status","agent":"claude","expected":"cd app && rtk npm run test && rtk git status"}
+{"command":"cd app && npm run test && git status","agent":"codex","expected":"cd app && rtk npm run test && rtk git status"}
+{"command":"cd app && rtk npm run test","agent":"claude","expected":null}
+{"command":"cd app && rtk npm run test","agent":"codex","expected":null}
+{"command":"cd app && rtk npm run test && rtk git status","agent":"claude","expected":null}
+{"command":"cd app && rtk npm run test && rtk git status","agent":"codex","expected":null}
+{"command":"cd ~ && git status","agent":"claude","expected":null}
+{"command":"cd ~ && git status","agent":"codex","expected":null}
+{"command":"claude","agent":"claude","expected":null}
+{"command":"claude","agent":"codex","expected":null}
+{"command":"codex","agent":"claude","expected":null}
+{"command":"codex","agent":"codex","expected":null}
+{"command":"command","agent":"claude","expected":null}
+{"command":"command","agent":"codex","expected":null}
+{"command":"curl https://example.com","agent":"claude","expected":null}
+{"command":"curl https://example.com","agent":"codex","expected":null}
+{"command":"description","agent":"claude","expected":null}
+{"command":"description","agent":"codex","expected":null}
+{"command":"dotnet test","agent":"claude","expected":null}
+{"command":"dotnet test","agent":"codex","expected":null}
+{"command":"echo $(git status)","agent":"claude","expected":null}
+{"command":"echo $(git status)","agent":"codex","expected":null}
+{"command":"env","agent":"claude","expected":"rtk env"}
+{"command":"env","agent":"codex","expected":"rtk env"}
+{"command":"env FOO=bar npm test","agent":"claude","expected":null}
+{"command":"env FOO=bar npm test","agent":"codex","expected":null}
+{"command":"env curl https://example.com","agent":"claude","expected":null}
+{"command":"env curl https://example.com","agent":"codex","expected":null}
+{"command":"eslint .","agent":"claude","expected":"rtk lint ."}
+{"command":"eslint .","agent":"codex","expected":"rtk lint ."}
+{"command":"eslint . -f json","agent":"claude","expected":null}
+{"command":"eslint . -f json","agent":"codex","expected":null}
+{"command":"eslint . -f json-with-metadata","agent":"claude","expected":null}
+{"command":"eslint . -f json-with-metadata","agent":"codex","expected":null}
+{"command":"eslint . -f=json","agent":"claude","expected":null}
+{"command":"eslint . -f=json","agent":"codex","expected":null}
+{"command":"expected","agent":"claude","expected":null}
+{"command":"expected","agent":"codex","expected":null}
+{"command":"false \"||\" npm run test","agent":"claude","expected":null}
+{"command":"false \"||\" npm run test","agent":"codex","expected":null}
+{"command":"false || git status","agent":"claude","expected":"false || rtk git status"}
+{"command":"false || git status","agent":"codex","expected":"false || rtk git status"}
+{"command":"false || rtk git status","agent":"claude","expected":null}
+{"command":"false || rtk git status","agent":"codex","expected":null}
+{"command":"for f in a; do npm run test; done","agent":"claude","expected":null}
+{"command":"for f in a; do npm run test; done","agent":"codex","expected":null}
+{"command":"gh issue view 123 --comments","agent":"claude","expected":null}
+{"command":"gh issue view 123 --comments","agent":"codex","expected":null}
+{"command":"gh issue view 123 --template='{{.title}}'","agent":"claude","expected":null}
+{"command":"gh issue view 123 --template='{{.title}}'","agent":"codex","expected":null}
+{"command":"gh issue view 123 --web","agent":"claude","expected":null}
+{"command":"gh issue view 123 --web","agent":"codex","expected":null}
+{"command":"gh issue view 123 -c","agent":"claude","expected":null}
+{"command":"gh issue view 123 -c","agent":"codex","expected":null}
+{"command":"gh issue view 123 -c=true","agent":"claude","expected":null}
+{"command":"gh issue view 123 -c=true","agent":"codex","expected":null}
+{"command":"gh issue view 123 -t '{{.title}}'","agent":"claude","expected":null}
+{"command":"gh issue view 123 -t '{{.title}}'","agent":"codex","expected":null}
+{"command":"gh issue view 123 -t={{.title}}","agent":"claude","expected":null}
+{"command":"gh issue view 123 -t={{.title}}","agent":"codex","expected":null}
+{"command":"gh issue view 456","agent":"claude","expected":"rtk gh issue view 456"}
+{"command":"gh issue view 456","agent":"codex","expected":"rtk gh issue view 456"}
+{"command":"gh pr list","agent":"claude","expected":"rtk gh pr list"}
+{"command":"gh pr list","agent":"codex","expected":"rtk gh pr list"}
+{"command":"gh pr list -q '.[].title'","agent":"claude","expected":null}
+{"command":"gh pr list -q '.[].title'","agent":"codex","expected":null}
+{"command":"gh pr list -q=.title","agent":"claude","expected":null}
+{"command":"gh pr list -q=.title","agent":"codex","expected":null}
+{"command":"gh pr status","agent":"claude","expected":null}
+{"command":"gh pr status","agent":"codex","expected":null}
+{"command":"gh pr view 123","agent":"claude","expected":"rtk gh pr view 123"}
+{"command":"gh pr view 123","agent":"codex","expected":"rtk gh pr view 123"}
+{"command":"gh pr view 123 --comments","agent":"claude","expected":null}
+{"command":"gh pr view 123 --comments","agent":"codex","expected":null}
+{"command":"gh pr view 123 --comments=true","agent":"claude","expected":null}
+{"command":"gh pr view 123 --comments=true","agent":"codex","expected":null}
+{"command":"gh pr view 123 --jq .title","agent":"claude","expected":null}
+{"command":"gh pr view 123 --jq .title","agent":"codex","expected":null}
+{"command":"gh pr view 123 --jq=.title","agent":"claude","expected":null}
+{"command":"gh pr view 123 --jq=.title","agent":"codex","expected":null}
+{"command":"gh pr view 123 --json title","agent":"claude","expected":null}
+{"command":"gh pr view 123 --json title","agent":"codex","expected":null}
+{"command":"gh pr view 123 --json title && git status","agent":"claude","expected":null}
+{"command":"gh pr view 123 --json title && git status","agent":"codex","expected":null}
+{"command":"gh pr view 123 --json=title","agent":"claude","expected":null}
+{"command":"gh pr view 123 --json=title","agent":"codex","expected":null}
+{"command":"gh pr view 123 --template '{{.title}}'","agent":"claude","expected":null}
+{"command":"gh pr view 123 --template '{{.title}}'","agent":"codex","expected":null}
+{"command":"gh pr view 123 --web","agent":"claude","expected":null}
+{"command":"gh pr view 123 --web","agent":"codex","expected":null}
+{"command":"gh pr view 123 -c","agent":"claude","expected":null}
+{"command":"gh pr view 123 -c","agent":"codex","expected":null}
+{"command":"gh pr view 123 -c=true","agent":"claude","expected":null}
+{"command":"gh pr view 123 -c=true","agent":"codex","expected":null}
+{"command":"gh pr view 123 -cw","agent":"claude","expected":null}
+{"command":"gh pr view 123 -cw","agent":"codex","expected":null}
+{"command":"gh pr view 123 -wc","agent":"claude","expected":null}
+{"command":"gh pr view 123 -wc","agent":"codex","expected":null}
+{"command":"gh repo view --web","agent":"claude","expected":null}
+{"command":"gh repo view --web","agent":"codex","expected":null}
+{"command":"gh run view 123 --web","agent":"claude","expected":null}
+{"command":"gh run view 123 --web","agent":"codex","expected":null}
+{"command":"gh run view 123 -w=true","agent":"claude","expected":null}
+{"command":"gh run view 123 -w=true","agent":"codex","expected":null}
+{"command":"gh run view 123 -wv","agent":"claude","expected":null}
+{"command":"gh run view 123 -wv","agent":"codex","expected":null}
+{"command":"git branch --list","agent":"claude","expected":"rtk git branch --list"}
+{"command":"git branch --list","agent":"codex","expected":"rtk git branch --list"}
+{"command":"git branch --list foo","agent":"claude","expected":null}
+{"command":"git branch --list foo","agent":"codex","expected":null}
+{"command":"git branch --show-current","agent":"claude","expected":"rtk git branch --show-current"}
+{"command":"git branch --show-current","agent":"codex","expected":"rtk git branch --show-current"}
+{"command":"git branch --show-current --quiet","agent":"claude","expected":null}
+{"command":"git branch --show-current --quiet","agent":"codex","expected":null}
+{"command":"git branch -r","agent":"claude","expected":null}
+{"command":"git branch -r","agent":"codex","expected":null}
+{"command":"git branch -vv","agent":"claude","expected":"rtk git branch -vv"}
+{"command":"git branch -vv","agent":"codex","expected":"rtk git branch -vv"}
+{"command":"git commit -m test","agent":"claude","expected":null}
+{"command":"git commit -m test","agent":"codex","expected":null}
+{"command":"git diff","agent":"claude","expected":null}
+{"command":"git diff","agent":"codex","expected":null}
+{"command":"git diff --cached --stat","agent":"claude","expected":"rtk git diff --cached --stat"}
+{"command":"git diff --cached --stat","agent":"codex","expected":"rtk git diff --cached --stat"}
+{"command":"git diff --cached --stat README.md","agent":"claude","expected":null}
+{"command":"git diff --cached --stat README.md","agent":"codex","expected":null}
+{"command":"git diff --check","agent":"claude","expected":"rtk git diff --check"}
+{"command":"git diff --check","agent":"codex","expected":"rtk git diff --check"}
+{"command":"git diff --check -- README.md","agent":"claude","expected":null}
+{"command":"git diff --check -- README.md","agent":"codex","expected":null}
+{"command":"git diff --name-only","agent":"claude","expected":null}
+{"command":"git diff --name-only","agent":"codex","expected":null}
+{"command":"git diff --raw","agent":"claude","expected":null}
+{"command":"git diff --raw","agent":"codex","expected":null}
+{"command":"git diff --stat -- README.md","agent":"claude","expected":null}
+{"command":"git diff --stat -- README.md","agent":"codex","expected":null}
+{"command":"git diff --stat --binary","agent":"claude","expected":null}
+{"command":"git diff --stat --binary","agent":"codex","expected":null}
+{"command":"git diff --stat --cached","agent":"claude","expected":"rtk git diff --stat --cached"}
+{"command":"git diff --stat --cached","agent":"codex","expected":"rtk git diff --stat --cached"}
+{"command":"git diff --stat --full-index","agent":"claude","expected":null}
+{"command":"git diff --stat --full-index","agent":"codex","expected":null}
+{"command":"git diff --stat --name-only","agent":"claude","expected":null}
+{"command":"git diff --stat --name-only","agent":"codex","expected":null}
+{"command":"git diff --stat --patch-with-stat","agent":"claude","expected":null}
+{"command":"git diff --stat --patch-with-stat","agent":"codex","expected":null}
+{"command":"git diff --stat HEAD","agent":"claude","expected":null}
+{"command":"git diff --stat HEAD","agent":"codex","expected":null}
+{"command":"git diff --stat README.md","agent":"claude","expected":null}
+{"command":"git diff --stat README.md","agent":"codex","expected":null}
+{"command":"git log --max-count=20 --oneline","agent":"claude","expected":"rtk git log --max-count=20 --oneline"}
+{"command":"git log --max-count=20 --oneline","agent":"codex","expected":"rtk git log --max-count=20 --oneline"}
+{"command":"git log --oneline","agent":"claude","expected":null}
+{"command":"git log --oneline","agent":"codex","expected":null}
+{"command":"git log --oneline --format=%H","agent":"claude","expected":null}
+{"command":"git log --oneline --format=%H","agent":"codex","expected":null}
+{"command":"git log --oneline --max-count 20","agent":"claude","expected":"rtk git log --oneline --max-count 20"}
+{"command":"git log --oneline --max-count 20","agent":"codex","expected":"rtk git log --oneline --max-count 20"}
+{"command":"git log --oneline --stat -n 10","agent":"claude","expected":null}
+{"command":"git log --oneline --stat -n 10","agent":"codex","expected":null}
+{"command":"git log --oneline -n 100","agent":"claude","expected":null}
+{"command":"git log --oneline -n 100","agent":"codex","expected":null}
+{"command":"git log --oneline -n 20","agent":"claude","expected":"rtk git log --oneline -n 20"}
+{"command":"git log --oneline -n 20","agent":"codex","expected":"rtk git log --oneline -n 20"}
+{"command":"git log -n 20 --oneline","agent":"claude","expected":"rtk git log -n 20 --oneline"}
+{"command":"git log -n 20 --oneline","agent":"codex","expected":"rtk git log -n 20 --oneline"}
+{"command":"git push","agent":"claude","expected":null}
+{"command":"git push","agent":"codex","expected":null}
+{"command":"git rev-parse --abbrev-ref HEAD","agent":"claude","expected":null}
+{"command":"git rev-parse --abbrev-ref HEAD","agent":"codex","expected":null}
+{"command":"git rev-parse HEAD","agent":"claude","expected":"rtk git rev-parse HEAD"}
+{"command":"git rev-parse HEAD","agent":"codex","expected":"rtk git rev-parse HEAD"}
+{"command":"git rev-parse HEAD --short","agent":"claude","expected":null}
+{"command":"git rev-parse HEAD --short","agent":"codex","expected":null}
+{"command":"git stash push","agent":"claude","expected":null}
+{"command":"git stash push","agent":"codex","expected":null}
+{"command":"git status","agent":"claude","expected":"rtk git status"}
+{"command":"git status","agent":"codex","expected":"rtk git status"}
+{"command":"git status \"&&\" npm run test","agent":"claude","expected":null}
+{"command":"git status \"&&\" npm run test","agent":"codex","expected":null}
+{"command":"git status \";\" npm run test","agent":"claude","expected":null}
+{"command":"git status \";\" npm run test","agent":"codex","expected":null}
+{"command":"git status \"unterminated","agent":"claude","expected":null}
+{"command":"git status \"unterminated","agent":"codex","expected":null}
+{"command":"git status & curl https://example.com","agent":"claude","expected":null}
+{"command":"git status & curl https://example.com","agent":"codex","expected":null}
+{"command":"git status &&","agent":"claude","expected":null}
+{"command":"git status &&","agent":"codex","expected":null}
+{"command":"git status && (npm test)","agent":"claude","expected":null}
+{"command":"git status && (npm test)","agent":"codex","expected":null}
+{"command":"git status && cd ~/repo","agent":"claude","expected":null}
+{"command":"git status && cd ~/repo","agent":"codex","expected":null}
+{"command":"git status && curl https://example.com","agent":"claude","expected":null}
+{"command":"git status && curl https://example.com","agent":"codex","expected":null}
+{"command":"git status && git diff --stat","agent":"claude","expected":"rtk git status && rtk git diff --stat"}
+{"command":"git status && git diff --stat","agent":"codex","expected":"rtk git status && rtk git diff --stat"}
+{"command":"git status && npm run test $NPM_ARGS","agent":"claude","expected":null}
+{"command":"git status && npm run test $NPM_ARGS","agent":"codex","expected":null}
+{"command":"git status && npm run test ${NPM_ARGS}","agent":"claude","expected":null}
+{"command":"git status && npm run test ${NPM_ARGS}","agent":"codex","expected":null}
+{"command":"git status && npm test > out.txt","agent":"claude","expected":null}
+{"command":"git status && npm test > out.txt","agent":"codex","expected":null}
+{"command":"git status && { npm run test; }","agent":"claude","expected":null}
+{"command":"git status && { npm run test; }","agent":"codex","expected":null}
+{"command":"git status --branch","agent":"claude","expected":null}
+{"command":"git status --branch","agent":"codex","expected":null}
+{"command":"git status --branch --short","agent":"claude","expected":"rtk git status --branch --short"}
+{"command":"git status --branch --short","agent":"codex","expected":"rtk git status --branch --short"}
+{"command":"git status --porcelain","agent":"claude","expected":null}
+{"command":"git status --porcelain","agent":"codex","expected":null}
+{"command":"git status --short","agent":"claude","expected":"rtk git status --short"}
+{"command":"git status --short","agent":"codex","expected":"rtk git status --short"}
+{"command":"git status --short --branch","agent":"claude","expected":"rtk git status --short --branch"}
+{"command":"git status --short --branch","agent":"codex","expected":"rtk git status --short --branch"}
+{"command":"git status --short --branch && git rev-parse HEAD","agent":"claude","expected":"rtk git status --short --branch && rtk git rev-parse HEAD"}
+{"command":"git status --short --branch && git rev-parse HEAD","agent":"codex","expected":"rtk git status --short --branch && rtk git rev-parse HEAD"}
+{"command":"git status -s","agent":"claude","expected":"rtk git status -s"}
+{"command":"git status -s","agent":"codex","expected":"rtk git status -s"}
+{"command":"git status -sb","agent":"claude","expected":"rtk git status -sb"}
+{"command":"git status -sb","agent":"codex","expected":"rtk git status -sb"}
+{"command":"git status > out.txt","agent":"claude","expected":null}
+{"command":"git status > out.txt","agent":"codex","expected":null}
+{"command":"git status \\&\\& npm run test","agent":"claude","expected":null}
+{"command":"git status \\&\\& npm run test","agent":"codex","expected":null}
+{"command":"git status \\; npm run test","agent":"claude","expected":null}
+{"command":"git status \\; npm run test","agent":"codex","expected":null}
+{"command":"git status | cat","agent":"claude","expected":null}
+{"command":"git status | cat","agent":"codex","expected":null}
+{"command":"git status; npm run typecheck","agent":"claude","expected":"rtk git status ; rtk npm run typecheck"}
+{"command":"git status; npm run typecheck","agent":"codex","expected":"rtk git status ; rtk npm run typecheck"}
+{"command":"git status; npm run typecheck; git diff --stat","agent":"claude","expected":"rtk git status ; rtk npm run typecheck ; rtk git diff --stat"}
+{"command":"git status; npm run typecheck; git diff --stat","agent":"codex","expected":"rtk git status ; rtk npm run typecheck ; rtk git diff --stat"}
+{"command":"git worktree add ../other","agent":"claude","expected":null}
+{"command":"git worktree add ../other","agent":"codex","expected":null}
+{"command":"go test -json ./...","agent":"claude","expected":null}
+{"command":"go test -json ./...","agent":"codex","expected":null}
+{"command":"go test -json=true ./...","agent":"claude","expected":null}
+{"command":"go test -json=true ./...","agent":"codex","expected":null}
+{"command":"go test ./... && gofmt -w main.go","agent":"claude","expected":null}
+{"command":"go test ./... && gofmt -w main.go","agent":"codex","expected":null}
+{"command":"gofmt -r 'a -> b' -w main.go && go test ./...","agent":"claude","expected":null}
+{"command":"gofmt -r 'a -> b' -w main.go && go test ./...","agent":"codex","expected":null}
+{"command":"gofmt -w ./main.go ../other.go && go test ./...","agent":"claude","expected":null}
+{"command":"gofmt -w ./main.go ../other.go && go test ./...","agent":"codex","expected":null}
+{"command":"gofmt -w main.go","agent":"claude","expected":null}
+{"command":"gofmt -w main.go","agent":"codex","expected":null}
+{"command":"gofmt -w main.go && cd app && go test ./...","agent":"claude","expected":null}
+{"command":"gofmt -w main.go && cd app && go test ./...","agent":"codex","expected":null}
+{"command":"gofmt -w main.go && git status","agent":"claude","expected":null}
+{"command":"gofmt -w main.go && git status","agent":"codex","expected":null}
+{"command":"gofmt -w main.go && go test -json ./...","agent":"claude","expected":null}
+{"command":"gofmt -w main.go && go test -json ./...","agent":"codex","expected":null}
+{"command":"gofmt -w main.go README.md && go test ./...","agent":"claude","expected":null}
+{"command":"gofmt -w main.go README.md && go test ./...","agent":"codex","expected":null}
+{"command":"gofmt -w main.go git.go && go test ./...","agent":"claude","expected":null}
+{"command":"gofmt -w main.go git.go && go test ./...","agent":"codex","expected":"gofmt -w main.go git.go && rtk go test ./..."}
+{"command":"gofmt -w main.go git.go && rtk go test ./...","agent":"claude","expected":null}
+{"command":"gofmt -w main.go git.go && rtk go test ./...","agent":"codex","expected":null}
+{"command":"gofmt -w main.go git.go internal/foo.go && go test ./...","agent":"claude","expected":null}
+{"command":"gofmt -w main.go git.go internal/foo.go && go test ./...","agent":"codex","expected":"gofmt -w main.go git.go internal/foo.go && rtk go test ./..."}
+{"command":"gofmt -w main.go git.go internal/foo.go && rtk go test ./...","agent":"claude","expected":null}
+{"command":"gofmt -w main.go git.go internal/foo.go && rtk go test ./...","agent":"codex","expected":null}
+{"command":"gofmt -w main.go || go test ./...","agent":"claude","expected":null}
+{"command":"gofmt -w main.go || go test ./...","agent":"codex","expected":null}
+{"command":"hookEventName","agent":"claude","expected":null}
+{"command":"hookEventName","agent":"codex","expected":null}
+{"command":"hookSpecificOutput","agent":"claude","expected":null}
+{"command":"hookSpecificOutput","agent":"codex","expected":null}
+{"command":"if true; then npm run test; fi","agent":"claude","expected":null}
+{"command":"if true; then npm run test; fi","agent":"codex","expected":null}
+{"command":"lint","agent":"claude","expected":null}
+{"command":"lint","agent":"codex","expected":null}
+{"command":"lint the repo","agent":"claude","expected":null}
+{"command":"lint the repo","agent":"codex","expected":null}
+{"command":"ls","agent":"claude","expected":null}
+{"command":"ls","agent":"codex","expected":null}
+{"command":"mypy --junit-xml report.xml","agent":"claude","expected":null}
+{"command":"mypy --junit-xml report.xml","agent":"codex","expected":null}
+{"command":"mypy --junit-xml=report.xml","agent":"claude","expected":null}
+{"command":"mypy --junit-xml=report.xml","agent":"codex","expected":null}
+{"command":"npm run build:ci","agent":"claude","expected":"rtk npm run build:ci"}
+{"command":"npm run build:ci","agent":"codex","expected":"rtk npm run build:ci"}
+{"command":"npm run dev","agent":"claude","expected":null}
+{"command":"npm run dev","agent":"codex","expected":null}
+{"command":"npm run dev && git status","agent":"claude","expected":null}
+{"command":"npm run dev && git status","agent":"codex","expected":null}
+{"command":"npm run start","agent":"claude","expected":null}
+{"command":"npm run start","agent":"codex","expected":null}
+{"command":"npm run test","agent":"claude","expected":"rtk npm run test"}
+{"command":"npm run test","agent":"codex","expected":"rtk npm run test"}
+{"command":"npm run test # skip && git status","agent":"claude","expected":null}
+{"command":"npm run test # skip && git status","agent":"codex","expected":null}
+{"command":"npm run test 'a\\' && git status 'x\\'","agent":"claude","expected":null}
+{"command":"npm run test 'a\\' && git status 'x\\'","agent":"codex","expected":null}
+{"command":"npm run test -- --reporter json-summary","agent":"claude","expected":null}
+{"command":"npm run test -- --reporter json-summary","agent":"codex","expected":null}
+{"command":"npm run typecheck","agent":"claude","expected":"rtk npm run typecheck"}
+{"command":"npm run typecheck","agent":"codex","expected":"rtk npm run typecheck"}
+{"command":"npx cowsay","agent":"claude","expected":null}
+{"command":"npx cowsay","agent":"codex","expected":null}
+{"command":"npx eslint . -f json-with-metadata","agent":"claude","expected":null}
+{"command":"npx eslint . -f json-with-metadata","agent":"codex","expected":null}
+{"command":"npx prisma migrate deploy","agent":"claude","expected":null}
+{"command":"npx prisma migrate deploy","agent":"codex","expected":null}
+{"command":"npx prisma migrate reset --force","agent":"claude","expected":null}
+{"command":"npx prisma migrate reset --force","agent":"codex","expected":null}
+{"command":"npx vitest run","agent":"claude","expected":"rtk npx vitest run"}
+{"command":"npx vitest run","agent":"codex","expected":"rtk npx vitest run"}
+{"command":"npx vitest run --reporter json-summary","agent":"claude","expected":null}
+{"command":"npx vitest run --reporter json-summary","agent":"codex","expected":null}
+{"command":"permissionDecision","agent":"claude","expected":null}
+{"command":"permissionDecision","agent":"codex","expected":null}
+{"command":"permissionDecisionReason","agent":"claude","expected":null}
+{"command":"permissionDecisionReason","agent":"codex","expected":null}
+{"command":"pip list","agent":"claude","expected":"rtk pip list"}
+{"command":"pip list","agent":"codex","expected":"rtk pip list"}
+{"command":"pip outdated","agent":"claude","expected":"rtk pip outdated"}
+{"command":"pip outdated","agent":"codex","expected":"rtk pip outdated"}
+{"command":"pip show flask","agent":"claude","expected":"rtk pip show flask"}
+{"command":"pip show flask","agent":"codex","expected":"rtk pip show flask"}
+{"command":"playwright test","agent":"claude","expected":null}
+{"command":"playwright test","agent":"codex","expected":null}
+{"command":"pnpm --filter ../foo test","agent":"claude","expected":null}
+{"command":"pnpm --filter ../foo test","agent":"codex","expected":null}
+{"command":"pnpm --filter ./packages/foo test","agent":"claude","expected":null}
+{"command":"pnpm --filter ./packages/foo test","agent":"codex","expected":null}
+{"command":"pnpm --filter @-scope/pkg test","agent":"claude","expected":null}
+{"command":"pnpm --filter @-scope/pkg test","agent":"codex","expected":null}
+{"command":"pnpm --filter @kernel-web-app/persistence test","agent":"claude","expected":"rtk pnpm --filter @kernel-web-app/persistence test"}
+{"command":"pnpm --filter @kernel-web-app/persistence test","agent":"codex","expected":"rtk pnpm --filter @kernel-web-app/persistence test"}
+{"command":"pnpm --filter @kernel-web-app/persistence typecheck","agent":"claude","expected":"rtk pnpm --filter @kernel-web-app/persistence typecheck"}
+{"command":"pnpm --filter @kernel-web-app/persistence typecheck","agent":"codex","expected":"rtk pnpm --filter @kernel-web-app/persistence typecheck"}
+{"command":"pnpm --filter @kernel-web-app/web build","agent":"claude","expected":"rtk pnpm --filter @kernel-web-app/web build"}
+{"command":"pnpm --filter @kernel-web-app/web build","agent":"codex","expected":"rtk pnpm --filter @kernel-web-app/web build"}
+{"command":"pnpm --filter @scope/* test","agent":"claude","expected":null}
+{"command":"pnpm --filter @scope/* test","agent":"codex","expected":null}
+{"command":"pnpm --filter @scope/.pkg test","agent":"claude","expected":null}
+{"command":"pnpm --filter @scope/.pkg test","agent":"codex","expected":null}
+{"command":"pnpm --filter @scope/pkg test --filter other","agent":"claude","expected":null}
+{"command":"pnpm --filter @scope/pkg test --filter other","agent":"codex","expected":null}
+{"command":"pnpm --filter @scope/pkg test --reporter=json","agent":"claude","expected":null}
+{"command":"pnpm --filter @scope/pkg test --reporter=json","agent":"codex","expected":null}
+{"command":"pnpm --filter @scope/pkg test --watch","agent":"claude","expected":null}
+{"command":"pnpm --filter @scope/pkg test --watch","agent":"codex","expected":null}
+{"command":"pnpm --filter @scope/pkg/extra test","agent":"claude","expected":null}
+{"command":"pnpm --filter @scope/pkg/extra test","agent":"codex","expected":null}
+{"command":"pnpm --filter pkg lint","agent":"claude","expected":null}
+{"command":"pnpm --filter pkg lint","agent":"codex","expected":null}
+{"command":"pnpm --filter=foo test","agent":"claude","expected":null}
+{"command":"pnpm --filter=foo test","agent":"codex","expected":null}
+{"command":"pnpm BOUNDARIES","agent":"claude","expected":null}
+{"command":"pnpm BOUNDARIES","agent":"codex","expected":null}
+{"command":"pnpm CHECK:foo","agent":"claude","expected":null}
+{"command":"pnpm CHECK:foo","agent":"codex","expected":null}
+{"command":"pnpm TYPECHECK","agent":"claude","expected":null}
+{"command":"pnpm TYPECHECK","agent":"codex","expected":null}
+{"command":"pnpm Test:unit","agent":"claude","expected":null}
+{"command":"pnpm Test:unit","agent":"codex","expected":null}
+{"command":"pnpm boundaries","agent":"claude","expected":"rtk pnpm boundaries"}
+{"command":"pnpm boundaries","agent":"codex","expected":"rtk pnpm boundaries"}
+{"command":"pnpm boundaries --fix","agent":"claude","expected":null}
+{"command":"pnpm boundaries --fix","agent":"codex","expected":null}
+{"command":"pnpm build","agent":"claude","expected":"rtk pnpm build"}
+{"command":"pnpm build","agent":"codex","expected":"rtk pnpm build"}
+{"command":"pnpm check:raw-sqlite-boundaries","agent":"claude","expected":"rtk pnpm check:raw-sqlite-boundaries"}
+{"command":"pnpm check:raw-sqlite-boundaries","agent":"codex","expected":"rtk pnpm check:raw-sqlite-boundaries"}
+{"command":"pnpm dev","agent":"claude","expected":null}
+{"command":"pnpm dev","agent":"codex","expected":null}
+{"command":"pnpm exec eslint . -f json-with-metadata","agent":"claude","expected":null}
+{"command":"pnpm exec eslint . -f json-with-metadata","agent":"codex","expected":null}
+{"command":"pnpm exec prettier --check .","agent":"claude","expected":"rtk pnpm exec prettier --check ."}
+{"command":"pnpm exec prettier --check .","agent":"codex","expected":"rtk pnpm exec prettier --check ."}
+{"command":"pnpm exec prisma migrate dev","agent":"claude","expected":null}
+{"command":"pnpm exec prisma migrate dev","agent":"codex","expected":null}
+{"command":"pnpm exec vitest --watch","agent":"claude","expected":null}
+{"command":"pnpm exec vitest --watch","agent":"codex","expected":null}
+{"command":"pnpm exec vitest run","agent":"claude","expected":"rtk pnpm exec vitest run"}
+{"command":"pnpm exec vitest run","agent":"codex","expected":"rtk pnpm exec vitest run"}
+{"command":"pnpm exec vitest run --reporter json-summary","agent":"claude","expected":null}
+{"command":"pnpm exec vitest run --reporter json-summary","agent":"codex","expected":null}
+{"command":"pnpm lint:fix","agent":"claude","expected":null}
+{"command":"pnpm lint:fix","agent":"codex","expected":null}
+{"command":"pnpm list --json=true","agent":"claude","expected":null}
+{"command":"pnpm list --json=true","agent":"codex","expected":null}
+{"command":"pnpm run format:check","agent":"claude","expected":"rtk pnpm run format:check"}
+{"command":"pnpm run format:check","agent":"codex","expected":"rtk pnpm run format:check"}
+{"command":"pnpm run storybook","agent":"claude","expected":null}
+{"command":"pnpm run storybook","agent":"codex","expected":null}
+{"command":"pnpm run test -- --reporter json-summary","agent":"claude","expected":null}
+{"command":"pnpm run test -- --reporter json-summary","agent":"codex","expected":null}
+{"command":"pnpm run test:watch","agent":"claude","expected":null}
+{"command":"pnpm run test:watch","agent":"codex","expected":null}
+{"command":"pnpm start","agent":"claude","expected":null}
+{"command":"pnpm start","agent":"codex","expected":null}
+{"command":"pnpm test:integration","agent":"claude","expected":"rtk pnpm test:integration"}
+{"command":"pnpm test:integration","agent":"codex","expected":"rtk pnpm test:integration"}
+{"command":"pnpm test:unit","agent":"claude","expected":"rtk pnpm test:unit"}
+{"command":"pnpm test:unit","agent":"codex","expected":"rtk pnpm test:unit"}
+{"command":"pnpm test:unit -- --filter other","agent":"claude","expected":null}
+{"command":"pnpm test:unit -- --filter other","agent":"codex","expected":null}
+{"command":"pnpm test:watch","agent":"claude","expected":null}
+{"command":"pnpm test:watch","agent":"codex","expected":null}
+{"command":"pnpm typecheck","agent":"claude","expected":"rtk pnpm typecheck"}
+{"command":"pnpm typecheck","agent":"codex","expected":"rtk pnpm typecheck"}
+{"command":"pnpm typecheck --watch","agent":"claude","expected":null}
+{"command":"pnpm typecheck --watch","agent":"codex","expected":null}
+{"command":"pnpm verify","agent":"claude","expected":null}
+{"command":"pnpm verify","agent":"codex","expected":null}
+{"command":"prisma migrate deploy","agent":"claude","expected":null}
+{"command":"prisma migrate deploy","agent":"codex","expected":null}
+{"command":"prisma migrate reset --force","agent":"claude","expected":null}
+{"command":"prisma migrate reset --force","agent":"codex","expected":null}
+{"command":"pytest --cov-report=xml","agent":"claude","expected":null}
+{"command":"pytest --cov-report=xml","agent":"codex","expected":null}
+{"command":"pytest --json-report","agent":"claude","expected":null}
+{"command":"pytest --json-report","agent":"codex","expected":null}
+{"command":"pytest --junitxml=report.xml","agent":"claude","expected":null}
+{"command":"pytest --junitxml=report.xml","agent":"codex","expected":null}
+{"command":"pytest -k \"a && b\" && git status","agent":"claude","expected":"rtk pytest -k 'a && b' && rtk git status"}
+{"command":"pytest -k \"a && b\" && git status","agent":"codex","expected":"rtk pytest -k 'a && b' && rtk git status"}
+{"command":"rm -rf ./tmp && git status","agent":"claude","expected":null}
+{"command":"rm -rf ./tmp && git status","agent":"codex","expected":null}
+{"command":"rtk --whatever git status","agent":"claude","expected":null}
+{"command":"rtk --whatever git status","agent":"codex","expected":null}
+{"command":"rtk cargo fmt --check && rtk git diff --check","agent":"claude","expected":null}
+{"command":"rtk cargo fmt --check && rtk git diff --check","agent":"codex","expected":null}
+{"command":"rtk git branch --list","agent":"claude","expected":null}
+{"command":"rtk git branch --list","agent":"codex","expected":null}
+{"command":"rtk git branch --show-current","agent":"claude","expected":null}
+{"command":"rtk git branch --show-current","agent":"codex","expected":null}
+{"command":"rtk git branch -vv","agent":"claude","expected":null}
+{"command":"rtk git branch -vv","agent":"codex","expected":null}
+{"command":"rtk git diff --cached --stat","agent":"claude","expected":null}
+{"command":"rtk git diff --cached --stat","agent":"codex","expected":null}
+{"command":"rtk git diff --check","agent":"claude","expected":null}
+{"command":"rtk git diff --check","agent":"codex","expected":null}
+{"command":"rtk git diff --stat --cached","agent":"claude","expected":null}
+{"command":"rtk git diff --stat --cached","agent":"codex","expected":null}
+{"command":"rtk git log --oneline -n 20","agent":"claude","expected":null}
+{"command":"rtk git log --oneline -n 20","agent":"codex","expected":null}
+{"command":"rtk git rev-parse HEAD","agent":"claude","expected":null}
+{"command":"rtk git rev-parse HEAD","agent":"codex","expected":null}
+{"command":"rtk git status","agent":"claude","expected":null}
+{"command":"rtk git status","agent":"codex","expected":null}
+{"command":"rtk git status && npm run test","agent":"claude","expected":null}
+{"command":"rtk git status && npm run test","agent":"codex","expected":null}
+{"command":"rtk git status && rtk git diff --stat","agent":"claude","expected":null}
+{"command":"rtk git status && rtk git diff --stat","agent":"codex","expected":null}
+{"command":"rtk git status --branch --short","agent":"claude","expected":null}
+{"command":"rtk git status --branch --short","agent":"codex","expected":null}
+{"command":"rtk git status --short --branch","agent":"claude","expected":null}
+{"command":"rtk git status --short --branch","agent":"codex","expected":null}
+{"command":"rtk git status --short --branch && rtk git rev-parse HEAD","agent":"claude","expected":null}
+{"command":"rtk git status --short --branch && rtk git rev-parse HEAD","agent":"codex","expected":null}
+{"command":"rtk git status -sb","agent":"claude","expected":null}
+{"command":"rtk git status -sb","agent":"codex","expected":null}
+{"command":"rtk git status ; rtk npm run typecheck ; rtk git diff --stat","agent":"claude","expected":null}
+{"command":"rtk git status ; rtk npm run typecheck ; rtk git diff --stat","agent":"codex","expected":null}
+{"command":"rtk lint .","agent":"claude","expected":null}
+{"command":"rtk lint .","agent":"codex","expected":null}
+{"command":"rtk npm run build:ci","agent":"claude","expected":null}
+{"command":"rtk npm run build:ci","agent":"codex","expected":null}
+{"command":"rtk npx vitest run","agent":"claude","expected":null}
+{"command":"rtk npx vitest run","agent":"codex","expected":null}
+{"command":"rtk pip show flask","agent":"claude","expected":null}
+{"command":"rtk pip show flask","agent":"codex","expected":null}
+{"command":"rtk pnpm --filter @kernel-web-app/persistence test","agent":"claude","expected":null}
+{"command":"rtk pnpm --filter @kernel-web-app/persistence test","agent":"codex","expected":null}
+{"command":"rtk pnpm --filter @kernel-web-app/persistence typecheck","agent":"claude","expected":null}
+{"command":"rtk pnpm --filter @kernel-web-app/persistence typecheck","agent":"codex","expected":null}
+{"command":"rtk pnpm --filter @kernel-web-app/web build","agent":"claude","expected":null}
+{"command":"rtk pnpm --filter @kernel-web-app/web build","agent":"codex","expected":null}
+{"command":"rtk pnpm boundaries","agent":"claude","expected":null}
+{"command":"rtk pnpm boundaries","agent":"codex","expected":null}
+{"command":"rtk pnpm check:raw-sqlite-boundaries","agent":"claude","expected":null}
+{"command":"rtk pnpm check:raw-sqlite-boundaries","agent":"codex","expected":null}
+{"command":"rtk pnpm exec prettier --check .","agent":"claude","expected":null}
+{"command":"rtk pnpm exec prettier --check .","agent":"codex","expected":null}
+{"command":"rtk pnpm test:integration","agent":"claude","expected":null}
+{"command":"rtk pnpm test:integration","agent":"codex","expected":null}
+{"command":"rtk pnpm test:unit","agent":"claude","expected":null}
+{"command":"rtk pnpm test:unit","agent":"codex","expected":null}
+{"command":"rtk pnpm typecheck","agent":"claude","expected":null}
+{"command":"rtk pnpm typecheck","agent":"codex","expected":null}
+{"command":"rtk proxy git diff","agent":"claude","expected":null}
+{"command":"rtk proxy git diff","agent":"codex","expected":null}
+{"command":"rtk pytest -k 'a && b' && rtk git status","agent":"claude","expected":null}
+{"command":"rtk pytest -k 'a && b' && rtk git status","agent":"codex","expected":null}
+{"command":"ruff check . --output-format json","agent":"claude","expected":null}
+{"command":"ruff check . --output-format json","agent":"codex","expected":null}
+{"command":"ruff check . --output-format=github","agent":"claude","expected":null}
+{"command":"ruff check . --output-format=github","agent":"codex","expected":null}
+{"command":"runtime probe should not be called","agent":"claude","expected":null}
+{"command":"runtime probe should not be called","agent":"codex","expected":null}
+{"command":"runtime_rtk_supported","agent":"claude","expected":null}
+{"command":"runtime_rtk_supported","agent":"codex","expected":null}
+{"command":"tool_input","agent":"claude","expected":null}
+{"command":"tool_input","agent":"codex","expected":null}
+{"command":"tool_name","agent":"claude","expected":null}
+{"command":"tool_name","agent":"codex","expected":null}
+{"command":"true \";\" npm run test","agent":"claude","expected":null}
+{"command":"true \";\" npm run test","agent":"codex","expected":null}
+{"command":"true && git status","agent":"claude","expected":"true && rtk git status"}
+{"command":"true && git status","agent":"codex","expected":"true && rtk git status"}
+{"command":"true && rtk git status","agent":"claude","expected":null}
+{"command":"true && rtk git status","agent":"codex","expected":null}
+{"command":"tsc --watch","agent":"claude","expected":null}
+{"command":"tsc --watch","agent":"codex","expected":null}
+{"command":"updatedInput","agent":"claude","expected":null}
+{"command":"updatedInput","agent":"codex","expected":null}
+{"command":"vitest --watch","agent":"claude","expected":null}
+{"command":"vitest --watch","agent":"codex","expected":null}
+{"command":"vitest run --coverage","agent":"claude","expected":null}
+{"command":"vitest run --coverage","agent":"codex","expected":null}
+{"command":"vitest run --outputFile report.json","agent":"claude","expected":null}
+{"command":"vitest run --outputFile report.json","agent":"codex","expected":null}
+{"command":"vitest run --reporter json","agent":"claude","expected":null}
+{"command":"vitest run --reporter json","agent":"codex","expected":null}
+{"command":"vitest run --reporter json-summary","agent":"claude","expected":null}
+{"command":"vitest run --reporter json-summary","agent":"codex","expected":null}
+{"command":"vitest run --reporter=json","agent":"claude","expected":null}
+{"command":"vitest run --reporter=json","agent":"codex","expected":null}
+{"command":"vitest run --reporter=junit","agent":"claude","expected":null}
+{"command":"vitest run --reporter=junit","agent":"codex","expected":null}
+{"command":"{not json","agent":"claude","expected":null}
+{"command":"{not json","agent":"codex","expected":null}

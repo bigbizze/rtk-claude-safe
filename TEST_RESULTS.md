@@ -1,54 +1,62 @@
-# v0.5.0 Verification Results
+# Go port verification
 
-Recorded: 2026-07-20
-
-Branch: `master`
+Recorded: 2026-10-19
 
 ## Scope
 
-This change keeps `rtk-claude-safe init` unchanged and adds explicit Codex SQLite maintenance
-commands:
+The runtime is now Go, including command classification, Claude/Codex hook adapters, RTK
+installation, hook configuration, Codex depth enforcement, and SQLite maintenance. Python
+source from commit `2e8a20f` is retained only under `tests/reference/` for differential testing.
+The native binary reports version `0.7.0`. The RTK minimum remains stable `0.42.4`.
 
-- `rtk-claude-safe repair-codex-sqlite` installs the managed
-  `codex_ignore_low_level_logs` trigger, which ignores `TRACE`, `DEBUG`, and `INFO` log inserts
-  before SQLite writes them.
-- `rtk-claude-safe revert-codex-sqlite-repair` removes only that exact managed trigger. Missing
-  trigger state is idempotent; same-name different SQL is treated as a conflict.
-- `rtk-claude-safe vacuum-codex-sqlite` runs `PRAGMA wal_checkpoint(TRUNCATE)`, `VACUUM`, and
-  `PRAGMA optimize`. `--backup` writes an adjacent timestamped SQLite backup first.
+## Checks
 
-All three commands ask the user to close Codex CLI sessions, require an exact `Y` confirmation,
-detect native Codex and Node wrapper processes, and check again immediately before mutation. The
-database path resolves from `--database`, `CODEX_SQLITE_HOME`, `CODEX_HOME`, then
-`~/.codex/logs_2.sqlite`; missing databases are not created. Native Windows Codex SQLite
-maintenance remains unsupported.
+- `go test ./...`: passed.
+- `go test -race ./...`: passed.
+- `go vet ./...`: passed.
+- `go test ./internal/policy -run '^$' -fuzz FuzzUncertainSyntax -fuzztime=5s -parallel=2`:
+  passed, with 146,292 executions in the recorded run.
+- `python3 tools/differential.py`: 77,034 comparisons passed across 12,831 distinct command
+  inputs, both agents, and supported/unsupported RTK payload handling.
+- `python3 tools/stateful_differential.py`: 54 depth-hook events matched Python outputs and
+  logical SQLite state, including replay, depth limits, configuration latching, and updates.
+- Original Python reference tests: 438 passed.
+- Linux amd64 build and Windows amd64/macOS arm64 cross-compilation: passed.
+- Native CLI smoke test in an isolated HOME: `init`, repeated `init`, depth enforcement setup,
+  and depth removal passed. Repeated initialization preserved settings byte-for-byte.
+- `git diff --check`: passed.
+- Optional `go test -cover ./...`: could not complete because the selected local toolchain
+  reports `go: no such tool "covdata"` for packages without test files. Normal tests and race
+  tests pass; no full repository coverage percentage is claimed.
 
-The existing RTK compatibility baseline is unchanged: this repository is still updated against
-RTK `v0.42.4` and requires `rtk >= 0.42.4` for hook config mutation.
+The expanded comparisons detected and corrected differences in Unicode case handling,
+Unicode decimal digits, integer underscores, control-character whitespace, and JSON integer
+precision. Committed Go golden tests run without Python. These checks are not a proof of
+behavior for every possible input.
 
-## Automated Checks
+## Measured startup
 
-- `uv run --extra dev pytest -q`
-  - Result: passed
-  - Coverage: 251 tests
-- `python3 -m compileall rtk_claude_safe`
-  - Result: passed
-- `git diff --check`
-  - Result: passed
-- `python3 -m rtk_claude_safe --version`
-  - Result: `rtk-claude-safe 0.5.0`
-- `uv run rtk-claude-safe --help`
-  - Result: public commands include `repair-codex-sqlite`,
-    `revert-codex-sqlite-repair`, and `vacuum-codex-sqlite`; hidden hook commands remain hidden.
+50 alternating executions per case on the local Linux machine. Python 3.12 ran the optimized
+reference entry point. Go ran the complete native binary. Both used the same installed RTK.
 
-## Manual Residual Step
+| Hook case | Python median | Go median | Speedup |
+| --- | ---: | ---: | ---: |
+| `echo hello`, no rewrite | 39.697 ms | 2.371 ms | 16.7x |
+| `git status`, rewrite and RTK version probe | 41.690 ms | 3.939 ms | 10.6x |
 
-No real repair, revert, or vacuum command was run against `~/.codex/logs_2.sqlite` during
-implementation. Those commands intentionally require the operator to close all Codex CLI sessions
-and confirm with `Y` before touching the live database.
+Reproduce with `python3 tools/benchmark.py --python /path/to/python`. Results depend on the
+interpreter, machine load, filesystem cache, and RTK executable.
 
-## Paperclip
+## Deployment status
 
-- Recorded local operational friction as `obs_19117b79aa85ba92f04b15e8`: Codex can keep inserting
-  low-level rows into `~/.codex/logs_2.sqlite`, so this package now exposes guarded repair, revert,
-  and vacuum commands instead of changing `init`.
+Go version 0.7.0 is installed at `~/.local/bin/rtk-claude-safe`, replacing the Python entry-point
+symlink. The pipx environment remains available for rollback. Claude and Codex now each use
+one managed rewrite hook pointing to the Go binary. Live hook payload checks passed for both
+agents; unrelated settings were preserved and repeated `init` left the files byte-identical.
+Claude settings, Codex hooks, and Codex config were backed up with suffix
+`.before-go-20261019075042`. Codex `config.toml` was unchanged. Before worker startup, Claude's
+440 managed entries had already been reduced to one.
+
+No repair, revert, vacuum, or depth installation command was run against live user databases
+or depth configuration. Installer download validation used local HTTP fixtures. Windows and
+macOS binaries were cross-compiled but not executed on those operating systems.

@@ -1,11 +1,13 @@
 # rtk-claude-safe
 
-A Python wrapper around [rtk (Rust Token Killer)](https://github.com/rtk-ai/rtk) that installs the
+A Go executable around [rtk (Rust Token Killer)](https://github.com/rtk-ai/rtk) that installs the
 right binary for your platform and applies curated, **safer** Claude Code and Codex hook
 configuration in one command.
 
 ```bash
-pipx install git+https://github.com/bigbizze/rtk-claude-safe.git
+go build -trimpath -o build/rtk-claude-safe .
+mkdir -p ~/.local/bin
+install -m 755 build/rtk-claude-safe ~/.local/bin/rtk-claude-safe
 rtk-claude-safe init
 ```
 
@@ -28,8 +30,10 @@ it writes one `Bash` `PreToolUse` hook in `~/.claude/settings.json` that calls
 safety classifier, and emit direct `updatedInput.command` rewrites only for known safe command
 shapes.
 
-Hook commands load only their runtime modules. Installer and database maintenance imports
-are deferred until a management command runs.
+The installed tool is one native binary. No Python interpreter, pipx environment, or external
+SQLite executable is required. Build with Go 1.26 or newer. The commands above run from a clone
+of this repository. Run `init` after replacing
+a Python installation so existing hooks point to the new binary.
 
 Claude's `if` filters are best-effort: when Claude cannot determine which commands a Bash
 input runs, it can run every candidate hook. With hundreds of candidate entries, this can
@@ -69,7 +73,7 @@ These are representative upstream bug classes that shape the default policy:
   suppress useful output through filtered routes. The classifier rejects watch flags and package
   scripts such as `dev`, `start`, `serve`, `server`, `preview`, `storybook`, and `watch`.
 
-The rewrite policy itself — defined in `rtk_claude_safe/allowlist.py` — is a parsed-command
+The rewrite policy itself — defined in `internal/policy/` — is a parsed-command
 classifier, not a raw wildcard list. It covers safe cargo/test/lint/typecheck/build commands,
 named npm/pnpm scripts, exact pnpm validation shorthands and package-filtered pnpm validation,
 selected `npx` tools, selected Prisma commands (`generate`, `db push`, and `migrate dev`),
@@ -122,7 +126,7 @@ Not supported in this release:
 - using this as a security boundary
 
 Codex matchers apply to tool names, not shell command strings. That means Codex gets one `^Bash$`
-hook, and the Python hook executable applies the allowlist internally. The hook fails open: invalid
+hook, and the Go hook executable applies the allowlist internally. The hook fails open: invalid
 payloads, non-Bash tools, unsupported shell syntax, excluded commands, and already-wrapped
 `rtk ...` commands emit no output so Codex runs the original command.
 Top-level `&&`, `||`, and `;` shell lists are supported when at least one segment is allowlisted
@@ -147,8 +151,7 @@ rtk-claude-safe enforce-subagent-depth
 The command creates `~/.codex/rtk-claude-safe/subagent-depth.sqlite` and patches
 `~/.codex/hooks.json` with managed `SessionStart`, `PreToolUse`, and `PostToolUse` handlers.
 After installing, open Codex CLI, run `/hooks`, and trust the new `rtk-claude-safe` subagent depth
-hooks. The command reports "configured, pending activation" until a new Codex session loads and
-trusts those handlers.
+hooks. A new Codex session must load and trust those handlers before enforcement is active.
 
 Depth enforcement treats the root conversation as depth 0. Codex 0.144.6 requires
 `agents.max_depth >= 1`; with `agents.max_depth = 1`, only root-created subagents are allowed, and
@@ -199,7 +202,7 @@ Available maintenance commands:
   trigger is absent, the command succeeds without changing the database. A same-name trigger with
   different SQL is left untouched.
 - `rtk-claude-safe vacuum-codex-sqlite` runs `PRAGMA wal_checkpoint(TRUNCATE)`, `VACUUM`, and
-  `PRAGMA optimize`, then reports database and WAL sizes before and after. It does not require the
+  `PRAGMA optimize`, then reports database sizes before and after. It does not require the
   repair trigger to be installed. Add `--backup` to write an adjacent timestamped SQLite backup
   before maintenance; backups are optional and are not deleted if a later maintenance step fails.
 
@@ -216,29 +219,34 @@ exclude_commands = [
 ]
 ```
 
-This is optional. The Python hooks already deny those shapes before rewriting, but the RTK config
+This is optional. The Go hooks already deny those shapes before rewriting, but the RTK config
 helps if another agent integration uses RTK directly.
+
+## Development
+
+```bash
+go test ./...
+go test -race ./...
+go vet ./...
+python3 tools/differential.py
+python3 tools/stateful_differential.py
+python3 tools/benchmark.py
+```
+
+Python is used only for optional differential verification against the frozen implementation
+in `tests/reference/`. Go tests include committed golden cases and do not require Python.
+The comparison runner checks both agents against existing cases and generated shell inputs.
+The stateful runner compares depth-hook outputs and SQLite ancestry state in temporary homes.
+These tests establish equivalence for tested inputs, not for every possible input.
 
 ## Layout
 
-```
-rtk_claude_safe/
-├── allowlist.py        # shared safe command classifier and rewrite mapper
-├── claude_hook.py      # Claude stdin/stdout PreToolUse hook handler
-├── claude_settings.py  # idempotent Claude settings.json patcher
-├── cli.py             # argparse entry point
-├── codex_hook.py      # Codex stdin/stdout PreToolUse hook handler
-├── codex_settings.py  # idempotent Codex hooks.json patcher
-├── codex_subagent_depth.py          # SQLite-backed Codex subagent depth hook runtime
-├── codex_subagent_depth_settings.py # installer/remover for subagent depth hooks
-├── codex_sqlite.py    # guarded Codex logs_2.sqlite repair, revert, and vacuum commands
-├── hook_command.py    # stable hook command path construction
-├── hooks.py           # compatibility shim
-├── installer.py       # OS/arch detection, GitHub release download, binary extraction
-├── managed_hooks.py   # exact detection of old/current managed hook commands
-├── rtk_runtime.py     # RTK version probing and compatibility checks
-└── settings.py        # compatibility shim
-```
-
-`allowlist.py` is the single place to edit if you want to tighten or loosen the rewrite policy for
-your stack.
+- `main.go`, `internal/app/`: CLI dispatch and options.
+- `internal/policy/`: shell parsing, command classification, and rewrites.
+- `internal/hook/`: Claude and Codex JSON adapters.
+- `internal/rtkruntime/`, `internal/install/`: RTK discovery, version checks, and verified installation.
+- `internal/settings/`: agent-specific hook configuration and rollback.
+- `internal/depth/`: Codex depth configuration, state, and enforcement.
+- `internal/sqlitemaint/`, `internal/store/`: guarded SQLite maintenance and platform helpers.
+- `tests/reference/`: frozen Python source and tests; never used by the installed tool.
+- `tools/`: optional migration verification programs.

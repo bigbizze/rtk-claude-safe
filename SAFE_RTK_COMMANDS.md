@@ -5,7 +5,7 @@ the installed `rtk` is older, prerelease, or unparseable. The allowlist is not R
 registry. It is the smaller subset this package is willing to install automatically for Claude Code
 and Codex.
 
-The source of truth is `rtk_claude_safe/allowlist.py`.
+The source of truth is `internal/policy/`.
 
 ## How Commands Are Classified
 
@@ -44,7 +44,7 @@ already-wrapped `rtk ...`, environment-prefixed commands, watch/server commands,
 output modes, hard-excluded commands, and arbitrary shell commands make the whole list fail open.
 
 Codex has an explicit narrow-exception contract for preserving specific non-RTK segments in
-auto-allowed rewrites. Each exception is named in `allowlist.py`, scoped to Codex, and must inspect
+auto-allowed rewrites. Each exception is named in `internal/policy/`, scoped to Codex, and must inspect
 the surrounding shell list. The current exceptions are:
 
 - `gofmt-write-before-go-test`: `gofmt -w` with explicit relative `.go` files may be preserved
@@ -58,7 +58,7 @@ the surrounding shell list. The current exceptions are:
 
 ## Included Families
 
-These families are included only in the narrower forms implemented in `allowlist.py`:
+These families are included only in the narrower forms implemented in `internal/policy/`:
 
 - Rust: `cargo build`, `cargo test`, `cargo check`, `cargo clippy`, and `cargo fmt --check`
   variants. Cargo JSON message formats are denied.
@@ -104,10 +104,10 @@ These remain denied even though RTK may expose handlers for some of them:
 
 ## Agent Differences
 
-Claude and Codex both call this package's Python hooks. The main difference is where matching starts:
+Claude and Codex both call this package's Go hooks. The main difference is where matching starts:
 
-- Claude settings contain many scoped `Bash(<pattern>*)` matcher groups. The Claude hook still
-  parses and checks the raw command before rewriting, so settings-level scope is only a first pass.
+- Claude settings contain one `Bash` matcher group with one managed command hook. The hook
+  parses and checks the raw command internally and requests permission for a rewritten command.
 - Codex settings contain one `^Bash$` matcher group. Codex matchers apply to the tool name, so the
   full command policy must live inside the hook executable.
 
@@ -116,12 +116,11 @@ mutation when RTK is unsupported; hidden hooks fail open at runtime.
 
 ## Compatibility Baseline
 
-The minimum supported stable RTK version is declared in `rtk_claude_safe/rtk_runtime.py`:
+The minimum supported stable RTK version is declared in `internal/rtkruntime/runtime.go`:
 
-```python
-MIN_SUPPORTED_RTK_VERSION = "0.42.4"
-RTK_POLICY_UPDATED_FOR = "v0.42.4"
+```go
+const MinVersion = "0.42.4"
 ```
 
-When the policy is refreshed for a newer stable RTK release, update those constants, the tests, and
+When the policy is refreshed for a newer stable RTK release, update that constant, the tests, and
 this document in the same change.

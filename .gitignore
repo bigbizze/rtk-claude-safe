@@ -11,3 +11,5 @@ venv/
 .ruff_cache/
 *.egg
 .idea
+/rtk-claude-safe
+/rtk-claude-safe.exe

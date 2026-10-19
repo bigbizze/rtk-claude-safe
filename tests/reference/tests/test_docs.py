@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 DOCS = [
     ROOT / "README.md",
     ROOT / "SAFE_RTK_COMMANDS.md",
